@@ -156,3 +156,5 @@ cython_debug/
 
 *.ply
 data/*
+
+settings.json
