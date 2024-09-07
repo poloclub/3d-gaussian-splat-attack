@@ -1,0 +1,55 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Edit Gaussian Splat Color - Single Color",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "edit_gs_color.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "args": ["data/road_sign/point_cloud/iteration_30000/point_cloud.ply", 
+                    "data/road_sign/point_cloud/iteration_30000/blue_point_cloud.ply", 
+                    "single", 
+                    "--rgb",
+                    "0.0", "0.0", "1.0"]
+        }, {
+            "name": "Edit Gaussian Splat Color - Sepia",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "edit_gs_color.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "args": ["data/splat.ply", 
+                    "data/sepia_splat.ply", 
+                    "sepia"]
+        }, {
+            "name": "Edit Gaussian Splat Color - Grayscale",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "edit_gs_color.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "args": ["data/splat.ply", 
+                    "data/grayscale_splat.ply", 
+                    "grayscale"]
+        }, {
+            "name": "Edit Gaussian Splat Color - Random",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "edit_gs_color.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "args": ["data/splat.ply", 
+                    "data/random_splat.ply", 
+                    "random"]
+        }
+    ]
+}
