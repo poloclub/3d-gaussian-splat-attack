@@ -8,19 +8,22 @@ from scene import Scene, GaussianModel
 from gaussian_renderer import render, network_gui
 from diff_gaussian_rasterization import GaussianRasterizer, GaussianRasterizationSettings
 from gaussian_renderer import render  # This is the rendering function from __init__.py
+from scene.cameras import Camera  
 from arguments import GroupParams
 from PIL import Image
 from tqdm import tqdm
+
+splat = 'road_sign'
 
 # copy stuff from experiment configs for now just to run the renderer.
 dataset = GroupParams()
 dataset.data_device = 'cuda'
 dataset.eval = False
 dataset.images = 'images'
-dataset.model_path = './splats/fencer'
+dataset.model_path = f'./splats/{splat}'
 dataset.resolution = -1
 dataset.sh_degree = 3
-dataset.source_path = 'C:\\Users\\matth\\Documents\\3D-Gaussian-Splat-Attack\\splats\\fencer'
+dataset.source_path = f"C:\\Users\\matth\\Documents\\3D-Gaussian-Splat-Attack\\splats\\{splat}"
 dataset.white_background = False
 
 opt = GroupParams()
@@ -92,13 +95,14 @@ if __name__ == "__main__":
     # Load Gaussian Splat model
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
-    scene = Scene(dataset, gaussians,load_iteration=30000) # very important to specify iteration to load! 
+    scene = Scene(dataset, gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! 
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-    viewpoint_stack = scene.getTrainCameras().copy()
+    # viewpoint_stack = scene.getTrainCameras().copy()
+    viewpoint_stack = [scene.getTrainCameras().copy()[49]] # single camera
     total_views = len(viewpoint_stack)
 
     for _ in tqdm(range(total_views), desc="Rendering viewpoints"):
