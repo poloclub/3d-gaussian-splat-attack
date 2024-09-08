@@ -160,4 +160,7 @@ data/*
 splats/*
 renders/*
 
+# models
+*.pth  
+
 settings.json
