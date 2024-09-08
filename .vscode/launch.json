@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Attack Splat",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "attack.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env" : {"CUDA_VISIBLE_DEVICES":"0"}
+        }, {
             "name": "Edit Gaussian Splat Color - Single Color",
             "type": "debugpy",
             "request": "launch",
