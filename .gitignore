@@ -163,4 +163,6 @@ renders/*
 # models
 *.pth  
 
+detectron2/*
+
 settings.json
