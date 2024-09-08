@@ -156,7 +156,7 @@ cython_debug/
 
 *.ply
 data/*
-splat/*
+splats/*
 renders/*
 
 settings.json
