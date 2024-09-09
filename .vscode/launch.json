@@ -13,6 +13,15 @@
             "justMyCode": false,
             "env" : {"CUDA_VISIBLE_DEVICES":"0"}
         }, {
+            "name": "DT2 Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "model.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env" : {"CUDA_VISIBLE_DEVICES":"0"}
+        },
+         {
             "name": "Edit Gaussian Splat Color - Single Color",
             "type": "debugpy",
             "request": "launch",
