@@ -2,7 +2,9 @@ import torch
 import numpy as np
 import sys
 import argparse
+import os
 from random import randint
+from model import detectron2_model, dt2_input, save_adv_image_preds, model_input
 sys.path.append("submodules/gaussian-splatting")
 from scene import Scene, GaussianModel
 from gaussian_renderer import render, network_gui
@@ -10,6 +12,7 @@ from diff_gaussian_rasterization import GaussianRasterizer, GaussianRasterizatio
 from gaussian_renderer import render  # This is the rendering function from __init__.py
 from scene.cameras import Camera  
 from arguments import GroupParams
+import subprocess
 from PIL import Image
 from tqdm import tqdm
 
@@ -50,48 +53,15 @@ pipe.compute_cov3D_python = False
 pipe.convert_SHs_python = False
 pipe.debug = False
 
-# Load a Gaussian splat model from a .ply file
-def load_gaussian_model(ply_file_path):
-    gaussian_model = GaussianModel(sh_degree=3)  # Initialize Gaussian model with SH degree 3
-    gaussian_model.load_ply(ply_file_path)       # Load the splat model from .ply file
-    return gaussian_model
 
-# Setup the camera parameters for rendering
-def setup_camera():
-    camera = {
-        "FoVx": 60,  # Field of view in x direction
-        "FoVy": 60,  # Field of view in y direction
-        "image_height": 512,
-        "image_width": 512,
-        "camera_center": [0, 0, 5],  # Camera position in world space
-        "world_view_transform": torch.eye(4),  # Identity matrix for simplicity
-        "full_proj_transform": torch.eye(4)    # Identity matrix for simplicity
-    }
-    return camera
-
-# Render the Gaussian splat and handle the output
-def render_gaussian_model(gaussian_model, output_image_path):
-    camera = setup_camera()  # Set up the camera
-    bg_color = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32).cuda()  # White background
-
-    # Render the Gaussian splat
-    render_pkg = render(viewpoint_camera=camera, pc=gaussian_model, pipe=None, bg_color=bg_color)
-    
-    # Extract data from render output
-    image = render_pkg["render"]                 # The rendered image
-    viewspace_points = render_pkg["viewspace_points"]  # Points in view space
-    visibility_filter = render_pkg["visibility_filter"]  # Which Gaussians are visible
-    radii = render_pkg["radii"]                  # Radii of Gaussians in view space
-
-    # Now you can process or save the image as needed (placeholder for image saving)
-    # save_image(output_image_path, image)
-
-    print("Rendering completed.")
-    return image
-
-# Main script
 if __name__ == "__main__":
 
+    # cleanup render and preds directories
+    subprocess.run(["make", "clean"], shell=True)
+        
+    # detectron2 
+    model, dt2_config = detectron2_model()
+    
     # Load Gaussian Splat model
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
@@ -101,19 +71,39 @@ if __name__ == "__main__":
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-    # viewpoint_stack = scene.getTrainCameras().copy()
-    viewpoint_stack = [scene.getTrainCameras().copy()[49]] # single camera
+    # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
+    cam_idx = 49
+    viewpoint_stack = [scene.getTrainCameras().copy()[cam_idx]] # single camera
     total_views = len(viewpoint_stack)
 
     for _ in tqdm(range(total_views), desc="Rendering viewpoints"):
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
 
+        # hard code the sign bbox, and target label for image at camera 49
+        sign_bbox = torch.tensor([[49.1297, 295.2162, 773.3174, 1033.7278]])
+        target = torch.tensor([32]) # sports ball
+        
+        # loss wrt to bbox and target
+        loss = model_input(model, render_pkg["render"], target=target, bboxes=sign_bbox, batch_size=1)
+        print(f"Loss: {loss}")
+        
+        # render the splat from chosen camera and predict. Save the image and preds
+        img_path = f"renders/render_{total_views - len(viewpoint_stack)}.png"
+        preds_path = "preds"
         Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)\
             .byte() \
             .permute(1, 2, 0)\
             .contiguous()\
             .cpu()\
             .numpy())\
-            .save(f"renders/render_{total_views - len(viewpoint_stack)}.png")
+            .save(img_path)
 
+        rendered_img_input = dt2_input(img_path)
+        success = save_adv_image_preds(model \
+            , dt2_config, input=rendered_img_input \
+            , instance_mask_thresh=dt2_config.MODEL.ROI_HEADS.SCORE_THRESH_TEST \
+            , target = target
+            , untarget = None
+            , is_targeted = True
+            , path=os.path.join(preds_path,f'render_c{cam_idx}.png'))
