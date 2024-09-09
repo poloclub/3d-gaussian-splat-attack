@@ -159,6 +159,7 @@ cython_debug/
 data/*
 splats/*
 renders/*
+preds/*
 
 # models
 *.pth  
