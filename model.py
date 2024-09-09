@@ -44,10 +44,10 @@ def dt2_input(image_path:str)->dict:
     input['instances'] = instances
     return input
 
-def save_dt2_image_preds(model \
+def save_adv_image_preds(model \
     , dt2_config \
     , input \
-    , instance_mask_thresh=0.2 \
+    , instance_mask_thresh=0.7 \
     , target:int=None \
     , untarget:int=None
     , is_targeted:bool=True \
@@ -91,6 +91,59 @@ def save_dt2_image_preds(model \
         return True
     return False
 
+def model_input(model, x, target, bboxes, batch_size=1):
+    """
+    To get the losses using DT2, we must supply the Ground Truth w/ the input dict
+    as an Instances object. This includes the ground truth boxes (gt_boxes)
+    and ground truth classes (gt_classes).  There should be a class & box for 
+    each GT object in the scene.
+    """
+    
+    if batch_size > 1:
+        x = x.reshape(x.shape[0],batch_size,x.shape[1]//batch_size,x.shape[2]).permute(1, 0, 2, 3).requires_grad_()
+        x.retain_grad()
+    else:
+        x = x.unsqueeze(0).requires_grad_()
+        x.retain_grad()
+    # visualize x
+    # z = x[0].detach().cpu().numpy()
+    # PIL.Image.fromarray(((z - z.min()) / (z.max() - z.min())*255).clip(0, 255).astype(np.uint8)).save("renders/bw/tensor.png")
+    
+    
+    # incoming tensor is N, H, W, C
+    losses_name = ["loss_cls", "loss_box_reg", "loss_rpn_cls", "loss_rpn_loc"]            
+    target_loss_idx = [0] # this targets es only `loss_cls` loss
+    # detectron2 wants images as RGB 0-255 range
+    x = ch.clip(x * 255 + 0.5, 0, 255).requires_grad_()
+    # x = ch.permute(x, (0, 3, 1, 2)).requires_grad_()
+    x.retain_grad()
+    height = x.shape[2]
+    width = x.shape[3]
+    if ch.tensor(bboxes).dim() == 1:
+        # pad tensor if only dealing w/ single bbox
+        gt_boxes = ch.tensor(bboxes).unsqueeze(0)
+    else :
+        gt_boxes = ch.tensor(bboxes)
+
+    inputs = list()
+    for i in  range(0, x.shape[0]):                
+        instances = Instances(image_size=(height,width))
+        instances.gt_classes = target.long()
+        instances.gt_boxes = Boxes(gt_boxes[i].unsqueeze(0))
+        input = {}
+        input['image']  = x[i]    
+        input['filename'] = ''
+        input['height'] = height
+        input['width'] = width
+        input['instances'] = instances      
+        inputs.append(input)
+    with EventStorage(0) as storage:            
+        # loss = model([input])[losses_name[target_loss_idx[0]]].requires_grad_()
+        losses = model(inputs)
+        loss = sum([losses[losses_name[tgt_idx]] for tgt_idx in target_loss_idx]).requires_grad_()
+    del x
+    return loss
+
 def detectron2_model():
     """
     Initializes and configures a Detectron2 model for object detection.
@@ -128,9 +181,9 @@ def detectron2_model():
 
 if __name__ == "__main__":
     pass    
-    # model, dt2_config = detectron2_model()
-    # img = dt2_input("renders/render_1.png")    
-    # save_dt2_image_preds(model, dt2_config, img, path="renders/render_1_preds.png")
-    # print('done')
+    model, dt2_config = detectron2_model()
+    img = dt2_input("renders/render_1.png")    
+    save_dt2_image_preds(model, dt2_config, img, path="renders/render_1_preds.png")
+    print('done')
     
     
