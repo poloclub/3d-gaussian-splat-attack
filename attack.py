@@ -34,7 +34,8 @@ opt.densification_interval = 10
 opt.density_From_iter = 500
 opt.densify_grad_threshold = 0.0002
 opt.density_until_iter = 15000
-opt.feature_lr = 0.0025
+#opt.feature_lr = 0.0025
+opt.feature_lr = 0.01
 opt.iterations = 30000
 opt.lambda_dssim = 0.2
 opt.opacity_lr = 0.05
@@ -66,6 +67,8 @@ if __name__ == "__main__":
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
     scene = Scene(dataset, gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! 
+    original_features_rest = gaussians._features_rest.clone().detach().requires_grad_(True)
+    original_features_dc = gaussians._features_dc.clone().detach().requires_grad_(True)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -78,32 +81,63 @@ if __name__ == "__main__":
 
     for _ in tqdm(range(total_views), desc="Rendering viewpoints"):
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
-
-        # hard code the sign bbox, and target label for image at camera 49
-        sign_bbox = torch.tensor([[49.1297, 295.2162, 773.3174, 1033.7278]])
-        target = torch.tensor([32]) # sports ball
         
-        # loss wrt to bbox and target
-        loss = model_input(model, render_pkg["render"], target=target, bboxes=sign_bbox, batch_size=1)
-        print(f"Loss: {loss}")
         
-        # render the splat from chosen camera and predict. Save the image and preds
-        img_path = f"renders/render_{total_views - len(viewpoint_stack)}.png"
-        preds_path = "preds"
-        Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)\
-            .byte() \
-            .permute(1, 2, 0)\
-            .contiguous()\
-            .cpu()\
-            .numpy())\
-            .save(img_path)
+        for i in range(1000):
+            render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
+            gaussians._features_rest.requires_grad_()
+            gaussians._features_dc.requires_grad_()
 
-        rendered_img_input = dt2_input(img_path)
-        success = save_adv_image_preds(model \
-            , dt2_config, input=rendered_img_input \
-            , instance_mask_thresh=dt2_config.MODEL.ROI_HEADS.SCORE_THRESH_TEST \
-            , target = target
-            , untarget = None
-            , is_targeted = True
-            , path=os.path.join(preds_path,f'render_c{cam_idx}.png'))
+            # hard code the sign bbox, and target label for image at camera 49
+            sign_bbox = np.array([[49.1297, 295.2162, 773.3174, 1033.7278]])
+            target = torch.tensor([32])  # sports ball
+
+            # loss wrt to bbox and target
+            loss = model_input(model, render_pkg["render"], target=target, bboxes=sign_bbox, batch_size=1)
+            print(f"Loss: {loss}")
+            loss.backward(retain_graph=True)
+
+            if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
+                epsilon = 5.0
+                alpha = 0.01
+
+                with torch.no_grad():
+                            
+                    f_rest_eta = alpha * torch.sign(gaussians._features_rest.grad)
+                    f_dc_eta = alpha * torch.sign(gaussians._features_dc.grad)
+
+                    # Perform the adversarial update
+                    f_rest_eta.mul_(-1)  # Targeted attack adjustment
+                    f_dc_eta.mul_(-1)
+
+                    # Update features in-place
+                    gaussians._features_rest.add_(f_rest_eta)
+                    gaussians._features_dc.add_(f_dc_eta)
+
+                    # Clamp the values within the range
+                    gaussians._features_rest.sub_(original_features_rest).clamp_(-epsilon, epsilon).add_(original_features_rest)
+                    gaussians._features_dc.sub_(original_features_dc).clamp_(-epsilon, epsilon).add_(original_features_dc)
+
+                    # Optionally clamp the values to [0, 1] range to maintain valid colors
+                    #gaussians._features_restclamp_(0, 1)
+                    #gaussians._features_dc.clamp_(0, 1)
+
+            # Render the splat from the chosen camera and predict. Save the image and preds
+            img_path = f"renders/render_{total_views - len(viewpoint_stack)}.png"
+            preds_path = "preds"
+            Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
+                            .byte()
+                            .permute(1, 2, 0)
+                            .contiguous()
+                            .cpu()
+                            .numpy()).save(img_path)
+
+            rendered_img_input = dt2_input(img_path)
+            success = save_adv_image_preds(
+                model, dt2_config, input=rendered_img_input,
+                instance_mask_thresh=dt2_config.MODEL.ROI_HEADS.SCORE_THRESH_TEST,
+                target=target, untarget=None, is_targeted=True,
+                path=os.path.join(preds_path, f'render_c{cam_idx}_it{i}.png')
+            )
+
+            print(f"Success: {success}")
