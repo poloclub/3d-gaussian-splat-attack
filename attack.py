@@ -54,6 +54,26 @@ pipe.compute_cov3D_python = False
 pipe.convert_SHs_python = False
 pipe.debug = False
 
+def gaussian_color_linf_attack(gaussian, alpha, epsilon):
+    with torch.no_grad():
+        f_rest_eta = alpha * torch.sign(gaussian._features_rest.grad)
+        f_dc_eta = alpha * torch.sign(gaussian._features_dc.grad)
+
+        # Perform the adversarial update
+        f_rest_eta.mul_(-1)  # Targeted attack adjustment
+        f_dc_eta.mul_(-1)
+
+        # Update features in-place
+        gaussian._features_rest.add_(f_rest_eta)
+        gaussian._features_dc.add_(f_dc_eta)
+
+        # Clamp the values within the range
+        gaussian._features_rest.sub_(original_features_rest).clamp_(-epsilon, epsilon).add_(original_features_rest)
+        gaussian._features_dc.sub_(original_features_dc).clamp_(-epsilon, epsilon).add_(original_features_dc)
+
+        # Optionally clamp the values to [0, 1] range to maintain valid colors
+        # gaussians._features_rest.clamp_(0, 1)
+        # gaussians._features_dc.clamp_(0, 1)
 
 if __name__ == "__main__":
 
@@ -90,7 +110,8 @@ if __name__ == "__main__":
 
             # hard code the sign bbox, and target label for image at camera 49
             sign_bbox = np.array([[49.1297, 295.2162, 773.3174, 1033.7278]])
-            target = torch.tensor([32])  # sports ball
+            # target = torch.tensor([32])  # sports ball
+            target = torch.tensor([5])  # bus
 
             # loss wrt to bbox and target
             loss = model_input(model, render_pkg["render"], target=target, bboxes=sign_bbox, batch_size=1)
@@ -100,27 +121,7 @@ if __name__ == "__main__":
             if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
                 epsilon = 5.0
                 alpha = 0.01
-
-                with torch.no_grad():
-                            
-                    f_rest_eta = alpha * torch.sign(gaussians._features_rest.grad)
-                    f_dc_eta = alpha * torch.sign(gaussians._features_dc.grad)
-
-                    # Perform the adversarial update
-                    f_rest_eta.mul_(-1)  # Targeted attack adjustment
-                    f_dc_eta.mul_(-1)
-
-                    # Update features in-place
-                    gaussians._features_rest.add_(f_rest_eta)
-                    gaussians._features_dc.add_(f_dc_eta)
-
-                    # Clamp the values within the range
-                    gaussians._features_rest.sub_(original_features_rest).clamp_(-epsilon, epsilon).add_(original_features_rest)
-                    gaussians._features_dc.sub_(original_features_dc).clamp_(-epsilon, epsilon).add_(original_features_dc)
-
-                    # Optionally clamp the values to [0, 1] range to maintain valid colors
-                    #gaussians._features_restclamp_(0, 1)
-                    #gaussians._features_dc.clamp_(0, 1)
+                gaussian_color_linf_attack(gaussians, alpha, epsilon)
 
             # Render the splat from the chosen camera and predict. Save the image and preds
             img_path = f"renders/render_{total_views - len(viewpoint_stack)}.png"
