@@ -183,7 +183,7 @@ if __name__ == "__main__":
     pass    
     model, dt2_config = detectron2_model()
     img = dt2_input("renders/render_1.png")    
-    save_dt2_image_preds(model, dt2_config, img, path="renders/render_1_preds.png")
+    save_adv_image_preds(model, dt2_config, img, path="renders/render_1_preds.png")
     print('done')
     
     
