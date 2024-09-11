@@ -16,6 +16,21 @@ from detectron2.data.detection_utils import *
 from detectron2.modeling import build_model
 from detectron2.utils.events import EventStorage
 
+
+def model_eval_mode(model):
+    model.train = False
+    model.training = False
+    model.proposal_generator.training = False
+    model.roi_heads.training = False
+    return model
+
+def model_train_mode(model):
+    model.train = True
+    model.training = True
+    model.proposal_generator.training = True
+    model.roi_heads.training = True
+    return model
+
 def dt2_input(image_path:str)->dict:
     """
     Construct a Detectron2-friendly input for an image
@@ -44,6 +59,8 @@ def dt2_input(image_path:str)->dict:
     input['instances'] = instances
     return input
 
+
+
 def save_adv_image_preds(model \
     , dt2_config \
     , input \
@@ -59,10 +76,7 @@ def save_adv_image_preds(model \
     instance_mask_thresh:float threshold pred boxes on confidence score
     path:str where to save image
     """ 
-    model.train = False
-    model.training = False
-    model.proposal_generator.training = False
-    model.roi_heads.training = False    
+    model = model_eval_mode(model)  
     with ch.no_grad():
         adv_outputs = model([input])
         perturbed_image = input['image'].data.permute((1,2,0)).detach().cpu().numpy()
@@ -80,16 +94,29 @@ def save_adv_image_preds(model \
         target_pred_exists = target in instances.pred_classes.cpu().numpy().tolist()
         untarget_pred_not_exists = untarget not in instances.pred_classes.cpu().numpy().tolist()
         pred = out.get_image()
-    model.train = True
-    model.training = True
-    model.proposal_generator.training = True
-    model.roi_heads.training = True  
+
+    model = model_train_mode(model)
+    
     PIL.Image.fromarray(pred).save(path)
     if is_targeted and target_pred_exists:
         return True
     elif (not is_targeted) and (untarget_pred_not_exists):
         return True
     return False
+
+def get_instances_bboxes(model, input, threshold=0.7):
+    """
+    Get the bounding boxes from the model's predictions
+    """
+    model = model_eval_mode(model)
+    with ch.no_grad():
+        outputs = model([input])
+        instances = outputs[0]['instances']
+        mask = instances.scores > threshold
+        instances = instances[mask]
+        boxes = instances.pred_boxes.tensor.cpu().numpy()
+    model = model_train_mode(model)
+    return boxes
 
 def model_input(model, x, target, bboxes, batch_size=1):
     """
@@ -100,7 +127,7 @@ def model_input(model, x, target, bboxes, batch_size=1):
     """
     
     if batch_size > 1:
-        x = x.reshape(x.shape[0],batch_size,x.shape[1]//batch_size,x.shape[2]).permute(1, 0, 2, 3).requires_grad_()
+        x.requires_grad_()
         x.retain_grad()
     else:
         x = x.unsqueeze(0).requires_grad_()
