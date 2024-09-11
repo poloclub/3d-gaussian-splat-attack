@@ -54,6 +54,35 @@ pipe.compute_cov3D_python = False
 pipe.convert_SHs_python = False
 pipe.debug = False
 
+
+def gaussian_position_linf_attack(gaussian, alpha, epsilon):
+    with torch.no_grad():
+        f_xyz_eta = alpha * torch.sign(gaussian._xyz.grad)
+        f_xyz_eta.mul_(-1) # comment out if desire Untargeted
+        gaussian._xyz.add_(f_xyz_eta)
+        gaussian._xyz.sub_(original_features_xyz).clamp_(-epsilon, epsilon).add_(original_features_xyz)
+
+def gaussian_rotation_linf_attack(gaussian, alpha, epsilon):
+    with torch.no_grad():
+        f_scaling_eta = alpha * torch.sign(gaussian._scaling.grad)
+        f_scaling_eta.mul_(-1)  # Targeted attack adjustment
+        gaussian._scaling.add_(f_scaling_eta)
+        gaussian._scaling.sub_(original_features_scaling).clamp_(-epsilon, epsilon).add_(original_features_scaling)
+
+def gaussian_opacity_linf_attack(gaussian, alpha, epsilon):
+    with torch.no_grad():
+        f_opacity_eta = alpha * torch.sign(gaussian._opacity.grad)
+        f_opacity_eta.mul_(-1)  # Targeted attack adjustment
+        gaussian._opacity.add_(f_opacity_eta)
+        gaussian._opacity.sub_(original_features_opacity).clamp_(-epsilon, epsilon).add_(original_features_opacity)
+
+def gaussian_scaling_linf_attack(gaussian, alpha, epsilon):
+    with torch.no_grad():
+        f_scaling_eta = alpha * torch.sign(gaussian._scaling.grad)
+        f_scaling_eta.mul_(-1)  # Targeted attack adjustment
+        gaussian._scaling.add_(f_scaling_eta)
+        gaussian._scaling.sub_(original_features_scaling).clamp_(-epsilon, epsilon).add_(original_features_scaling)
+
 def gaussian_color_linf_attack(gaussian, alpha, epsilon):
     with torch.no_grad():
         f_rest_eta = alpha * torch.sign(gaussian._features_rest.grad)
@@ -86,9 +115,13 @@ if __name__ == "__main__":
     # Load Gaussian Splat model
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
-    scene = Scene(dataset, gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! 
+    scene = Scene(dataset, gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
     original_features_rest = gaussians._features_rest.clone().detach().requires_grad_(True)
     original_features_dc = gaussians._features_dc.clone().detach().requires_grad_(True)
+    original_features_xyz = gaussians._xyz.clone().detach().requires_grad_(True)
+    original_features_scaling = gaussians._scaling.clone().detach().requires_grad_(True)
+    original_features_opacity = gaussians._opacity.clone().detach().requires_grad_(True)
+    original_features_scaling = gaussians._scaling.clone().detach().requires_grad_(True)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -112,6 +145,7 @@ if __name__ == "__main__":
             sign_bbox = np.array([[49.1297, 295.2162, 773.3174, 1033.7278]])
             # target = torch.tensor([32])  # sports ball
             target = torch.tensor([5])  # bus
+            # target = torch.tensor([11]) # stop sign
 
             # loss wrt to bbox and target
             loss = model_input(model, render_pkg["render"], target=target, bboxes=sign_bbox, batch_size=1)
@@ -122,6 +156,10 @@ if __name__ == "__main__":
                 epsilon = 5.0
                 alpha = 0.01
                 gaussian_color_linf_attack(gaussians, alpha, epsilon)
+                # gaussian_position_linf_attack(gaussians, alpha, epsilon)
+                # gaussian_rotation_linf_attack(gaussians, alpha, epsilon)
+                # gaussian_opacity_linf_attack(gaussians, alpha, epsilon)
+                # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
 
             # Render the splat from the chosen camera and predict. Save the image and preds
             img_path = f"renders/render_{total_views - len(viewpoint_stack)}.png"
@@ -136,7 +174,7 @@ if __name__ == "__main__":
             rendered_img_input = dt2_input(img_path)
             success = save_adv_image_preds(
                 model, dt2_config, input=rendered_img_input,
-                instance_mask_thresh=dt2_config.MODEL.ROI_HEADS.SCORE_THRESH_TEST,
+                instance_mask_thresh=0.9,
                 target=target, untarget=None, is_targeted=True,
                 path=os.path.join(preds_path, f'render_c{cam_idx}_it{i}.png')
             )
