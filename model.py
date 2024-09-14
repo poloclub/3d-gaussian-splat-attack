@@ -104,7 +104,7 @@ def save_adv_image_preds(model \
         return True
     return False
 
-def get_instances_bboxes(model, input, threshold=0.7):
+def get_instances_bboxes(model, input, target=None, threshold=0.7):
     """
     Get the bounding boxes from the model's predictions
     """
@@ -113,10 +113,12 @@ def get_instances_bboxes(model, input, threshold=0.7):
         outputs = model([input])
         instances = outputs[0]['instances']
         mask = instances.scores > threshold
+        if target is not None:
+            mask = mask & (instances.pred_classes == target)
         instances = instances[mask]
-        boxes = instances.pred_boxes.tensor.cpu().numpy()
+        
     model = model_train_mode(model)
-    return boxes
+    return instances.pred_boxes.tensor.detach().cpu().numpy()
 
 def model_input(model, x, target, bboxes, batch_size=1):
     """
@@ -126,12 +128,9 @@ def model_input(model, x, target, bboxes, batch_size=1):
     each GT object in the scene.
     """
     
-    if batch_size > 1:
-        x.requires_grad_()
-        x.retain_grad()
-    else:
-        x = x.unsqueeze(0).requires_grad_()
-        x.retain_grad()
+    if x.dim() == 3:
+        x = x.unsqueeze(0).requires_grad_()  
+    x.retain_grad()
     # visualize x
     # z = x[0].detach().cpu().numpy()
     # PIL.Image.fromarray(((z - z.min()) / (z.max() - z.min())*255).clip(0, 255).astype(np.uint8)).save("renders/bw/tensor.png")
@@ -156,7 +155,7 @@ def model_input(model, x, target, bboxes, batch_size=1):
     for i in  range(0, x.shape[0]):                
         instances = Instances(image_size=(height,width))
         instances.gt_classes = target.long()
-        instances.gt_boxes = Boxes(gt_boxes[i].unsqueeze(0))
+        instances.gt_boxes = Boxes(gt_boxes[i])
         input = {}
         input['image']  = x[i]    
         input['filename'] = ''
