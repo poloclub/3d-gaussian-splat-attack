@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # Load Gaussian Splat model
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
-    scene = Scene(dataset, gaussians,load_iteration=7000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+    scene = Scene(dataset, gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
     num_classes = dataset.num_classes
     print("Num classes: ",num_classes)
     classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
