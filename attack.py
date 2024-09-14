@@ -5,11 +5,8 @@ import argparse
 import os
 from random import randint
 from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
-sys.path.append("submodules/gaussian-splatting")
 from scene import Scene, GaussianModel
-from gaussian_renderer import render, network_gui
-from diff_gaussian_rasterization import GaussianRasterizer, GaussianRasterizationSettings
-from gaussian_renderer import render  # This is the rendering function from __init__.py
+from gaussian_renderer import render
 from scene.cameras import Camera  
 from arguments import GroupParams
 import subprocess
@@ -17,7 +14,8 @@ from PIL import Image
 from tqdm import tqdm
 from edit_object_removal import points_inside_convex_hull
 import copy
-
+# sys.path.append("submodules/gaussian-splatting")
+#from scene import Scene, GaussianModel
 dataset = GroupParams()
 dataset.data_device = 'cuda'
 dataset.eval = False
@@ -187,7 +185,7 @@ if __name__ == "__main__":
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
     # cam_idx = 49
-    start_cam = 45
+    start_cam = 49
     end_cam = 50
     # single camera or range of cameras
     viewpoint_stack = scene.getTrainCameras().copy()[start_cam:end_cam] 
