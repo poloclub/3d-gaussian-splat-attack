@@ -86,10 +86,10 @@ def save_adv_image_preds(model \
         v = Visualizer(pbi, MetadataCatalog.get(dt2_config.DATASETS.TRAIN[0]),scale=1.0)
         instances = adv_outputs[0]['instances']
         things = np.array(MetadataCatalog.get(dt2_config.DATASETS.TRAIN[0]).thing_classes) # holds class labels
-        predicted_classes = things[instances.pred_classes.cpu().numpy().tolist()] 
-        print(f'Predicted Class: {predicted_classes}')        
         mask = instances.scores > instance_mask_thresh
         instances = instances[mask]
+        predicted_classes = things[instances.pred_classes.cpu().numpy().tolist()] 
+        print(f'Predicted Class: {predicted_classes}')        
         out = v.draw_instance_predictions(instances.to("cpu"))
         target_pred_exists = target in instances.pred_classes.cpu().numpy().tolist()
         untarget_pred_not_exists = untarget not in instances.pred_classes.cpu().numpy().tolist()
@@ -116,9 +116,11 @@ def get_instances_bboxes(model, input, target=None, threshold=0.7):
         if target is not None:
             mask = mask & (instances.pred_classes == target)
         instances = instances[mask]
-        
+        bboxes = instances.pred_boxes.tensor.detach().cpu().numpy()
+        if bboxes.size == 0:
+            return np.array([[0.0, 0.0, input['height'], input['width']]])
     model = model_train_mode(model)
-    return instances.pred_boxes.tensor.detach().cpu().numpy()
+    return bboxes 
 
 def model_input(model, x, target, bboxes, batch_size=1):
     """
@@ -128,6 +130,8 @@ def model_input(model, x, target, bboxes, batch_size=1):
     each GT object in the scene.
     """
     
+    model = model_train_mode(model)
+
     if x.dim() == 3:
         x = x.unsqueeze(0).requires_grad_()  
     x.retain_grad()
@@ -184,7 +188,7 @@ def detectron2_model():
     """    
     model_config = "pretrained-models/faster_rcnn_R_50_FPN_3x/config.yaml"
     weights_file = "pretrained-models/faster_rcnn_R_50_FPN_3x/model_final.pth"
-    score_thresh = 0.2
+    score_thresh = 0.5
     
     cuda_visible_device = os.environ.get("CUDA_VISIBLE_DEVICES", default=1)
     DEVICE = f"cuda:{cuda_visible_device}"
