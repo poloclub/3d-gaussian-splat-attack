@@ -13,6 +13,7 @@ import subprocess
 from PIL import Image
 from tqdm import tqdm
 from edit_object_removal import points_inside_convex_hull
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 import copy
 # sys.path.append("submodules/gaussian-splatting")
 #from scene import Scene, GaussianModel
@@ -20,14 +21,14 @@ dataset = GroupParams()
 dataset.data_device = 'cuda'
 dataset.eval = False
 dataset.images = 'images'
-dataset.model_path = f"C:\\Users\\matth\\Documents\\gaussian-grouping\\output\\road_sign"
+dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
 dataset.n_views = 100
 dataset.num_classes = 256
 dataset.object_path = 'object_mask'
 dataset.random_init = False
 dataset.resolution = 1
 dataset.sh_degree = 3
-dataset.source_path = f"C:\\Users\\matth\\Documents\\gaussian-grouping\\data\\road_sign"
+dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
 dataset.train_split = False
 dataset.white_background = False
 
@@ -185,10 +186,36 @@ if __name__ == "__main__":
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
     # cam_idx = 49
-    start_cam = 49
-    end_cam = 50
+    start_cam = 43
+    end_cam = 44
     # single camera or range of cameras
     viewpoint_stack = scene.getTrainCameras().copy()[start_cam:end_cam] 
+    
+    # create sequence of cameras with nearby views
+    add_cams = 5
+    shift_amount = 0.35  # Adjust this value based on how far you want to shift
+    for i in range(1, add_cams):
+        camera = copy.deepcopy(viewpoint_stack[0])
+
+        # Assume `camera` is your Camera instance
+
+        # Shift right
+        camera.T[0] += shift_amount * i
+
+        # Or shift left
+        # camera.T[0] -= shift_amount
+
+        # Recompute world_view_transform with updated T
+        camera.world_view_transform = torch.tensor(
+            getWorld2View2(camera.R, camera.T, camera.trans, camera.scale)
+        ).transpose(0, 1).cuda()
+
+        # Update the full projection transform with the new world_view_transform
+        camera.full_proj_transform = (
+            camera.world_view_transform.unsqueeze(0).bmm(camera.projection_matrix.unsqueeze(0))
+        ).squeeze(0)
+        viewpoint_stack.append(camera)
+
     total_views = len(viewpoint_stack)
 
     # get benign render bboxes - would be better if you could SOLO render the target!
@@ -206,60 +233,76 @@ if __name__ == "__main__":
         rendered_img_input = dt2_input(img_path)
         bbox = get_instances_bboxes(model, rendered_img_input, target = 11, threshold=0.2)
         bboxes.append(bbox)
-    gt_bboxes = np.array(bboxes)
 
-    for _ in tqdm(range(total_views), desc="Rendering viewpoints"):
-        # viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
-        
-        for it in range(1000):
-            renders = []
+    gt_bboxes = np.array(bboxes)
+    batch_mode = False  # Set this to False for single camera mode
+
+    for it in range(1000):
+        renders = []
+        if batch_mode:
             for cam in viewpoint_stack:
                 render_pkg = render(cam, gaussians, pipe, bg)
                 renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-            # gaussians._features_rest.requires_grad_()
-            # gaussians._features_dc.requires_grad_()
-            
-            # hard code the sign bbox, and target label for image at camera 49
-            # sign_bbox = np.array([[[49.1297, 295.2162, 773.3174, 1033.7278]]])
-            # target = torch.tensor([32])  # sports ball
             target = torch.tensor([5])  # bus
-            # target = torch.tensor([11]) # stop sign
-            
-            # loss wrt to bbox and target
             loss = model_input(model, renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
-            print(f"Loss: {loss}")
-            loss.backward(retain_graph=True)
+        else:
+            cam = viewpoint_stack[0]
+            render_pkg = render(cam, gaussians, pipe, bg)
+            renders.append(render_pkg["render"])
+            renders = torch.stack(renders)
+            target = torch.tensor([5])  # bus
+            loss = model_input(model, renders, target=target, bboxes=np.expand_dims(gt_bboxes[0],axis=0), batch_size=renders.shape[0])
 
-            if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
-                epsilon = 5.0
-                alpha = 0.01
-                # gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon)
-                gaussian_color_linf_attack(gaussians, alpha, epsilon)
-                # gaussian_position_linf_attack(gaussians, alpha, epsilon)
-                # gaussian_rotation_linf_attack(gaussians, alpha, epsilon)
-                # gaussian_opacity_linf_attack(gaussians, alpha, epsilon)
-                # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
-                # gaussian_rotation_linf_attack(gaussians, alpha, epsilon)
-                
-                
-                combined_gaussians = copy.deepcopy(gaussians)
-                combined_gaussians.concat_setup("features_rest",gaussians_original._features_rest, True)
-                combined_gaussians.concat_setup("features_dc",gaussians_original._features_dc, True)
-                combined_gaussians.concat_setup("xyz",gaussians_original._xyz, True)
-                combined_gaussians.concat_setup("scaling",gaussians_original._scaling, True)
-                combined_gaussians.concat_setup("opacity",gaussians_original._opacity, True)
-                combined_gaussians.concat_setup("rotation",gaussians_original._rotation, True)
-                combined_gaussians.concat_setup("objects_dc",gaussians_original._objects_dc, True)
-                
-                # render entire scene by concatenating the features back together. 
-                concat_renders = []
+        print(f"Loss: {loss}")
+        loss.backward(retain_graph=True)
+
+        if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
+            epsilon = 5.0
+            alpha = 0.001
+            gaussian_color_linf_attack(gaussians, alpha, epsilon)
+
+            combined_gaussians = copy.deepcopy(gaussians)
+            combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
+            combined_gaussians.concat_setup("features_dc", gaussians_original._features_dc, True)
+            combined_gaussians.concat_setup("xyz", gaussians_original._xyz, True)
+            combined_gaussians.concat_setup("scaling", gaussians_original._scaling, True)
+            combined_gaussians.concat_setup("opacity", gaussians_original._opacity, True)
+            combined_gaussians.concat_setup("rotation", gaussians_original._rotation, True)
+            combined_gaussians.concat_setup("objects_dc", gaussians_original._objects_dc, True)
+
+            concat_renders = []
+            if batch_mode:
                 for cam in viewpoint_stack:
                     render_pkg = render(cam, combined_gaussians, pipe, bg)
                     concat_renders.append(render_pkg["render"])
-            for j, cam in enumerate(viewpoint_stack):
-                img_path = f"renders/render_concat_{j}.png"
-                cr = concat_renders[j]
+            else:
+                cam = viewpoint_stack[0]
+                render_pkg = render(cam, combined_gaussians, pipe, bg)
+                concat_renders.append(render_pkg["render"])
+
+            if batch_mode:
+                for j, cam in enumerate(viewpoint_stack):
+                    img_path = f"renders/render_concat_{j}.png"
+                    cr = concat_renders[j]
+                    preds_path = "preds"
+                    Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
+                                    .byte()
+                                    .permute(1, 2, 0)
+                                    .contiguous()
+                                    .cpu()
+                                    .numpy()).save(img_path)
+
+                    rendered_img_input = dt2_input(img_path)
+                    success = save_adv_image_preds(
+                        model, dt2_config, input=rendered_img_input,
+                        instance_mask_thresh=0.4,
+                        target=target, untarget=None, is_targeted=True,
+                        path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
+                    )
+            else:
+                img_path = f"renders/render_concat_0.png"
+                cr = concat_renders[0]
                 preds_path = "preds"
                 Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
                                 .byte()
@@ -271,10 +314,17 @@ if __name__ == "__main__":
                 rendered_img_input = dt2_input(img_path)
                 success = save_adv_image_preds(
                     model, dt2_config, input=rendered_img_input,
-                    instance_mask_thresh=0.5,
+                    instance_mask_thresh=0.4,
                     target=target, untarget=None, is_targeted=True,
-                    path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
+                    path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png')
                 )
-            gaussians.optimizer.zero_grad(set_to_none = True)
-            model.zero_grad()
-            print(f"Success: {success}")
+                if not batch_mode and success:
+                    viewpoint_stack.pop(0)
+                    gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
+                    if len(viewpoint_stack) == 0:
+                        print ("All cameras attacked successfully")
+                        break
+        del combined_gaussians
+        gaussians.optimizer.zero_grad(set_to_none=True)
+        model.zero_grad()
+        print(f"Success: {success}")
