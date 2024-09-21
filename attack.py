@@ -197,23 +197,11 @@ if __name__ == "__main__":
     for i in range(1, add_cams):
         camera = copy.deepcopy(viewpoint_stack[0])
 
-        # Assume `camera` is your Camera instance
-
         # Shift right
-        camera.T[0] += shift_amount * i
-
-        # Or shift left
-        # camera.T[0] -= shift_amount
-
-        # Recompute world_view_transform with updated T
-        camera.world_view_transform = torch.tensor(
-            getWorld2View2(camera.R, camera.T, camera.trans, camera.scale)
-        ).transpose(0, 1).cuda()
-
-        # Update the full projection transform with the new world_view_transform
-        camera.full_proj_transform = (
-            camera.world_view_transform.unsqueeze(0).bmm(camera.projection_matrix.unsqueeze(0))
-        ).squeeze(0)
+        T = camera.T
+        T[0] += shift_amount * i
+        camera.update_transform(T)
+        
         viewpoint_stack.append(camera)
 
     total_views = len(viewpoint_stack)

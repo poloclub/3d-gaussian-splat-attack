@@ -56,6 +56,28 @@ class Camera(nn.Module):
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
 
+    def update_transform(self, T):
+        """
+        Example: 
+                T[0] += 1.0 (shift camera +1 unit in x direction - right) 
+                T[1] += 1.0 (shift camera +1 unit in y direction - up)
+                T[2] += 1.0 (shift camera +1 unit in z direction - forward)
+        """
+        assert isinstance(T, np.ndarray), "T must be a numpy array"
+        assert T.shape == (3,), "T must be of shape (3,)"
+        self.T = T
+
+        # Recompute world_view_transform with updated T
+        self.world_view_transform = torch.tensor(
+            getWorld2View2(self.R, self.T, self.trans, self.scale)
+        ).transpose(0, 1).cuda()
+
+        # Update the full projection transform with the new world_view_transform
+        self.full_proj_transform = (
+            self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))
+        ).squeeze(0)
+        
+
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
         self.image_width = width
