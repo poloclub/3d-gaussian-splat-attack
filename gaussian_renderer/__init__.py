@@ -78,14 +78,16 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
         else:
             shs = pc.get_features
+            sh_objs = pc.get_objects
     else:
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    rendered_image, radii = rasterizer(
+    rendered_image, radii, rendered_objects = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
+        sh_objs = sh_objs,
         colors_precomp = colors_precomp,
         opacities = opacity,
         scales = scales,
@@ -97,4 +99,5 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     return {"render": rendered_image,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
-            "radii": radii}
+            "radii": radii,
+            "render_object": rendered_objects}
