@@ -19,7 +19,7 @@
             "program": "model.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"0"}
+            "env" : {"CUDA_VISIBLE_DEVICES":"2"}
         },
          {
             "name": "Edit Gaussian Splat Color - Single Color",
@@ -28,7 +28,7 @@
             "program": "edit_gs_color.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "env" : {"CUDA_VISIBLE_DEVICES":"2"},
             "args": ["data/road_sign/point_cloud/iteration_30000/point_cloud.ply", 
                     "data/road_sign/point_cloud/iteration_30000/blue_point_cloud.ply", 
                     "single", 
@@ -41,7 +41,7 @@
             "program": "edit_gs_color.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "env" : {"CUDA_VISIBLE_DEVICES":"2"},
             "args": ["data/splat.ply", 
                     "data/sepia_splat.ply", 
                     "sepia"]
@@ -52,7 +52,7 @@
             "program": "edit_gs_color.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "env" : {"CUDA_VISIBLE_DEVICES":"2"},
             "args": ["data/splat.ply", 
                     "data/grayscale_splat.ply", 
                     "grayscale"]
@@ -63,7 +63,7 @@
             "program": "edit_gs_color.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"0"},
+            "env" : {"CUDA_VISIBLE_DEVICES":"2"},
             "args": ["data/splat.ply", 
                     "data/random_splat.ply", 
                     "random"]
