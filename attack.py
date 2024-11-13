@@ -10,6 +10,7 @@ from gaussian_renderer import render
 from scene.cameras import Camera  
 from arguments import GroupParams
 import subprocess
+import PIL
 from PIL import Image
 from tqdm import tqdm
 from edit_object_removal import points_inside_convex_hull
@@ -21,14 +22,16 @@ dataset = GroupParams()
 dataset.data_device = 'cuda'
 dataset.eval = False
 dataset.images = 'images'
-dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
+# dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
+dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/living_room"
 dataset.n_views = 100
 dataset.num_classes = 256
 dataset.object_path = 'object_mask'
 dataset.random_init = False
 dataset.resolution = 1
 dataset.sh_degree = 3
-dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
+# dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
+dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/living_room"
 dataset.train_split = False
 dataset.white_background = False
 
@@ -60,6 +63,21 @@ pipe = GroupParams()
 pipe.compute_cov3D_python = False
 pipe.convert_SHs_python = False
 pipe.debug = False
+
+
+# attack options:
+# modify the object iD to select another item in the scene.
+# obj 175 is the road sign in the neighborhood scene
+# obj 221 is one of the trucks
+selected_obj_ids = torch.tensor([35], device='cuda')
+select_thresh = 0.5 # selected threshold for the gaussian group
+target = torch.tensor([19]) 
+# cam_idx = 49
+start_cam = 0
+end_cam = 1
+# create sequence of cameras with nearby views
+add_cams = 1
+shift_amount = 0.15  # Adjust this value based on how far you want to shift
 
 def gaussian_position_linf_attack(gaussian, alpha, epsilon):
     with torch.no_grad():
@@ -153,8 +171,7 @@ if __name__ == "__main__":
     classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
     classifier.cuda()
     classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth")))
-    selected_obj_ids = torch.tensor([175], device='cuda')
-    select_thresh = 0.3
+
     with torch.no_grad():
         logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
         prob_obj3d = torch.softmax(logits3d, dim=0)
@@ -177,31 +194,30 @@ if __name__ == "__main__":
     manipulable_features = ["features_rest", "features_dc", "xyz", "scaling", "opacity"]
     original_features_rest = gaussians._features_rest.clone().detach().requires_grad_(True)
     original_features_dc = gaussians._features_dc.clone().detach().requires_grad_(True)
-    # original_features_xyz = gaussians._xyz.clone().detach().requires_grad_(True)
-    # original_features_scaling = gaussians._scaling.clone().detach().requires_grad_(True)
+    original_features_xyz = gaussians._xyz.clone().detach().requires_grad_(True)
+    original_features_scaling = gaussians._scaling.clone().detach().requires_grad_(True)
     # original_features_opacity = gaussians._opacity.clone().detach().requires_grad_(True)
     # original_features_rotation = gaussians._rotation.clone().detach().requires_grad_(True)    
 
     bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
-    # cam_idx = 49
-    start_cam = 43
-    end_cam = 44
+
     # single camera or range of cameras
     viewpoint_stack = scene.getTrainCameras().copy()[start_cam:end_cam] 
     
-    # create sequence of cameras with nearby views
-    add_cams = 5
-    shift_amount = 0.35  # Adjust this value based on how far you want to shift
-    for i in range(1, add_cams):
-        camera = copy.deepcopy(viewpoint_stack[0])
 
-        # Shift right
-        T = camera.T
-        T[0] += shift_amount * i
-        camera.update_transform(T)
-        
+    for i in range(1, add_cams):
+
+        # make a new camera with a view that we choose. 
+        camera = copy.deepcopy(viewpoint_stack[0])
+        # Shift left
+        # T = camera.T
+        # T[0] += shift_amount * i
+        # camera.transform(T)
+        # yaw right 
+        camera.yaw(7*i)
+
         viewpoint_stack.append(camera)
 
     total_views = len(viewpoint_stack)
@@ -212,36 +228,52 @@ if __name__ == "__main__":
     for i, cam in enumerate(viewpoint_stack):
         render_pkg = render(cam, gaussians, pipe, bg)
         img_path = f"renders/render_{i}.png"
-        Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
-                        .byte()
-                        .permute(1, 2, 0)
-                        .contiguous()
-                        .cpu()
-                        .numpy()).save(img_path)
+        np_img = (torch.clamp(render_pkg["render"], min=0, max=1.0) * 255) \
+                        .byte() \
+                        .permute(1, 2, 0) \
+                        .contiguous() \
+                        .cpu() \
+                        .numpy() 
+        pil_img = Image.fromarray(np_img)
+        pil_img_bw = pil_img.convert('L')
+        bw_tresh = 128
+        pil_img_bw = pil_img_bw.point(lambda p: p > bw_tresh and 255)
+        # pil_img_bw = PIL.ImageOps.invert(pil_img_bw)
+        bbox = pil_img_bw.getbbox()
+        
+        pil_img.save(img_path)
+
         rendered_img_input = dt2_input(img_path)
-        bbox = get_instances_bboxes(model, rendered_img_input, target = 11, threshold=0.2)
+        # bbox = get_instances_bboxes(model, rendered_img_input, target = target.detach().cpu().numpy(), threshold=0.2)
         bboxes.append(bbox)
+
+        draw = PIL.ImageDraw.Draw(pil_img_bw)
+        draw.rectangle(bbox, outline="red", width=3)
+        draw.text((bbox[0], bbox[1] - 10), "object", fill="red")
+        pil_img_bw.save(f'renders/bw/bbox_render_{i}.jpg')    
+        bbox = np.expand_dims(np.array(bbox), axis=0)
 
     gt_bboxes = np.array(bboxes)
     batch_mode = False  # Set this to False for single camera mode
 
     for it in range(1000):
         renders = []
+        
         if batch_mode:
             for cam in viewpoint_stack:
                 render_pkg = render(cam, gaussians, pipe, bg)
                 renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-            target = torch.tensor([5])  # bus
+           
             loss = model_input(model, renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
         else:
             cam = viewpoint_stack[0]
             render_pkg = render(cam, gaussians, pipe, bg)
             renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-            target = torch.tensor([5])  # bus
-            loss = model_input(model, renders, target=target, bboxes=np.expand_dims(gt_bboxes[0],axis=0), batch_size=renders.shape[0])
 
+            loss = model_input(model, renders, target=target, bboxes=np.expand_dims(gt_bboxes, axis=0), batch_size=renders.shape[0])
+ 
         print(f"Loss: {loss}")
         loss.backward(retain_graph=True)
 
@@ -249,7 +281,10 @@ if __name__ == "__main__":
             epsilon = 5.0
             alpha = 0.001
             gaussian_color_linf_attack(gaussians, alpha, epsilon)
+            gaussian_position_linf_attack(gaussians, alpha, epsilon)
+            gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
 
+            # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
             combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
             combined_gaussians.concat_setup("features_dc", gaussians_original._features_dc, True)
