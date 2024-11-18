@@ -16,53 +16,129 @@ from tqdm import tqdm
 from edit_object_removal import points_inside_convex_hull
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 import copy
+
+
+import torch
+import argparse
+import os
+import copy
+from random import randint
+from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
+from scene import Scene, GaussianModel
+from gaussian_renderer import render
+from scene.cameras import Camera  
+from arguments import GroupParams
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+from edit_object_removal import points_inside_convex_hull
+from PIL import Image, ImageDraw
+from tqdm import tqdm
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Refactor Gaussian Adversarial Attack Script")
+
+    # Dataset parameters
+    parser.add_argument("--data_device", type=str, default="cuda", help="Device to use for data processing")
+    parser.add_argument("--eval", action="store_true", help="Set evaluation mode")
+    parser.add_argument("--images", type=str, required=True, help="Path to images directory")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to model")
+    parser.add_argument("--n_views", type=int, default=100, help="Number of views")
+    parser.add_argument("--num_classes", type=int, default=256, help="Number of classes")
+    parser.add_argument("--object_path", type=str, required=True, help="Path to object masks")
+    parser.add_argument("--random_init", action="store_true", help="Enable random initialization")
+    parser.add_argument("--resolution", type=int, default=1, help="Resolution factor")
+    parser.add_argument("--sh_degree", type=int, default=3, help="Spherical harmonics degree")
+    parser.add_argument("--source_path", type=str, required=True, help="Path to data source")
+    parser.add_argument("--train_split", action="store_true", help="Use train split")
+    parser.add_argument("--white_background", action="store_true", help="Use white background")
+
+    # Optimization parameters
+    parser.add_argument("--densification_interval", type=int, default=100, help="Interval for densification")
+    parser.add_argument("--density_From_iter", type=int, default=500, help="Starting iteration for density")
+    parser.add_argument("--densify_grad_threshold", type=float, default=0.0002, help="Densify gradient threshold")
+    parser.add_argument("--density_until_iter", type=int, default=15000, help="Density until iteration")
+    parser.add_argument("--feature_lr", type=float, default=0.0025, help="Feature learning rate")
+    parser.add_argument("--iterations", type=int, default=30000, help="Number of optimization iterations")
+    parser.add_argument("--lambda_dssim", type=float, default=0.2, help="Lambda for DSSIM loss")
+    parser.add_argument("--opacity_lr", type=float, default=0.05, help="Learning rate for opacity")
+    parser.add_argument("--opacity_reset_interval", type=int, default=3000, help="Interval to reset opacity")
+    parser.add_argument("--percent_dense", type=float, default=0.01, help="Percent density")
+    parser.add_argument("--position_lr_delay_mult", type=float, default=0.01, help="Position learning rate delay multiplier")
+    parser.add_argument("--position_lr_final", type=float, default=1.6e-6, help="Final position learning rate")
+    parser.add_argument("--position_lr_init", type=float, default=0.00016, help="Initial position learning rate")
+    parser.add_argument("--position_lr_max_steps", type=int, default=30000, help="Max steps for position learning rate")
+    parser.add_argument("--reg3d_interval", type=int, default=2, help="Interval for 3D regularization")
+    parser.add_argument("--reg3d_k", type=int, default=5, help="K value for 3D regularization")
+    parser.add_argument("--reg3d_lambda_val", type=int, default=2, help="Lambda value for 3D regularization")
+    parser.add_argument("--reg3d_max_points", type=int, default=300000, help="Max points for 3D regularization")
+    parser.add_argument("--reg3d_sample_size", type=int, default=1000, help="Sample size for 3D regularization")
+    parser.add_argument("--rotation_lr", type=float, default=0.001, help="Rotation learning rate")
+    parser.add_argument("--scaling_lr", type=float, default=0.005, help="Scaling learning rate")
+
+    # Pipeline parameters
+    parser.add_argument("--compute_cov3D_python", action="store_true", help="Enable computation of covariance in Python")
+    parser.add_argument("--convert_SHs_python", action="store_true", help="Enable SH conversion in Python")
+    parser.add_argument("--debug", action="store_true", help="Enable debugging mode")
+
+    # Attack options
+    parser.add_argument("--selected_obj_ids", type=int, nargs="+", required=True, help="IDs of selected objects")
+    parser.add_argument("--select_thresh", type=float, default=0.5, help="Selection threshold for Gaussian group")
+    parser.add_argument("--target", type=int, nargs="+", required=True, help="Target object IDs")
+    parser.add_argument("--start_cam", type=int, default=0, help="Start index for camera views")
+    parser.add_argument("--end_cam", type=int, default=1, help="End index for camera views")
+    parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
+    parser.add_argument("--shift_amount", type=float, default=0.15, help="Shift amount for additional cameras")
+
+    return parser.parse_args()
+
+
 # sys.path.append("submodules/gaussian-splatting")
 #from scene import Scene, GaussianModel
-dataset = GroupParams()
-dataset.data_device = 'cuda'
-dataset.eval = False
-dataset.images = 'images'
-# dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
-dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/living_room"
-dataset.n_views = 100
-dataset.num_classes = 256
-dataset.object_path = 'object_mask'
-dataset.random_init = False
-dataset.resolution = 1
-dataset.sh_degree = 3
-# dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
-dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/living_room"
-dataset.train_split = False
-dataset.white_background = False
+# dataset = GroupParams()
+# dataset.data_device = 'cuda'
+# dataset.eval = False
+# dataset.images = 'images'
+# # dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
+# dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/living_room"
+# dataset.n_views = 100
+# dataset.num_classes = 256
+# dataset.object_path = 'object_mask'
+# dataset.random_init = False
+# dataset.resolution = 1
+# dataset.sh_degree = 3
+# # dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
+# dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/living_room"
+# dataset.train_split = False
+# dataset.white_background = False
 
-opt = GroupParams()
-opt.densification_interval = 100
-opt.density_From_iter = 500
-opt.densify_grad_threshold = 0.0002
-opt.density_until_iter = 15000
-opt.feature_lr = 0.0025
-opt.iterations = 30000
-opt.lambda_dssim = 0.2
-opt.opacity_lr = 0.05
-opt.opacity_reset_interval = 3000
-opt.percent_dense = 0.01
-opt.position_lr_delay_mult = 0.01
-opt.position_lr_final = 1.6e-06
-opt.position_lr_init = 0.00016
-opt.position_lr_max_steps = 30000
-opt.reg3d_interval = 2
-opt.reg3d_k = 5
-opt.reg3d_lambda_val = 2
-opt.reg3d_max_points = 300000
-opt.reg3d_sample_size = 1000
-#opt.random_background = False
-opt.rotation_lr = 0.001
-opt.scaling_lr = 0.005
+# opt = GroupParams()
+# opt.densification_interval = 100
+# opt.density_From_iter = 500
+# opt.densify_grad_threshold = 0.0002
+# opt.density_until_iter = 15000
+# opt.feature_lr = 0.0025
+# opt.iterations = 30000
+# opt.lambda_dssim = 0.2
+# opt.opacity_lr = 0.05
+# opt.opacity_reset_interval = 3000
+# opt.percent_dense = 0.01
+# opt.position_lr_delay_mult = 0.01
+# opt.position_lr_final = 1.6e-06
+# opt.position_lr_init = 0.00016
+# opt.position_lr_max_steps = 30000
+# opt.reg3d_interval = 2
+# opt.reg3d_k = 5
+# opt.reg3d_lambda_val = 2
+# opt.reg3d_max_points = 300000
+# opt.reg3d_sample_size = 1000
+# #opt.random_background = False
+# opt.rotation_lr = 0.001
+# opt.scaling_lr = 0.005
 
-pipe = GroupParams()
-pipe.compute_cov3D_python = False
-pipe.convert_SHs_python = False
-pipe.debug = False
+# pipe = GroupParams()
+# pipe.compute_cov3D_python = False
+# pipe.convert_SHs_python = False
+# pipe.debug = False
 
 
 # attack options:
@@ -107,7 +183,7 @@ def gaussian_scaling_linf_attack(gaussian, alpha, epsilon):
         gaussian._scaling.add_(f_scaling_eta)
         gaussian._scaling.sub_(original_features_scaling).clamp_(-epsilon, epsilon).add_(original_features_scaling)
 
-def gaussian_color_linf_attack(gaussian, alpha, epsilon):
+def gaussian_color_linf_attack(gaussian, alpha, epsilon, features_rest, features_dc):
     with torch.no_grad():
         f_rest_eta = alpha * torch.sign(gaussian._features_rest.grad)
         f_dc_eta = alpha * torch.sign(gaussian._features_dc.grad)
@@ -121,8 +197,8 @@ def gaussian_color_linf_attack(gaussian, alpha, epsilon):
         gaussian._features_dc.add_(f_dc_eta)
 
         # Clamp the values within the range
-        gaussian._features_rest.sub_(original_features_rest).clamp_(-epsilon, epsilon).add_(original_features_rest)
-        gaussian._features_dc.sub_(original_features_dc).clamp_(-epsilon, epsilon).add_(original_features_dc)
+        gaussian._features_rest.sub_(features_rest).clamp_(-epsilon, epsilon).add_(features_rest)
+        gaussian._features_dc.sub_(features_dc).clamp_(-epsilon, epsilon).add_(features_dc)
 
 
 def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
@@ -154,7 +230,60 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
 
  
 
-if __name__ == "__main__":
+def main(args):
+    # Initialize dataset parameters
+    dataset = GroupParams()
+    dataset.data_device = args.data_device
+    dataset.eval = args.eval
+    dataset.images = args.images
+    dataset.model_path = args.model_path
+    dataset.n_views = args.n_views
+    dataset.num_classes = args.num_classes
+    dataset.object_path = args.object_path
+    dataset.random_init = args.random_init
+    dataset.resolution = args.resolution
+    dataset.sh_degree = args.sh_degree
+    dataset.source_path = args.source_path
+    dataset.train_split = args.train_split
+    dataset.white_background = False # args.white_background
+
+    # Initialize optimization parameters
+    opt = GroupParams()
+    opt.densification_interval = args.densification_interval
+    opt.density_From_iter = args.density_From_iter
+    opt.densify_grad_threshold = args.densify_grad_threshold
+    opt.density_until_iter = args.density_until_iter
+    opt.feature_lr = args.feature_lr
+    opt.iterations = args.iterations
+    opt.lambda_dssim = args.lambda_dssim
+    opt.opacity_lr = args.opacity_lr
+    opt.opacity_reset_interval = args.opacity_reset_interval
+    opt.percent_dense = args.percent_dense
+    opt.position_lr_delay_mult = args.position_lr_delay_mult
+    opt.position_lr_final = args.position_lr_final
+    opt.position_lr_init = args.position_lr_init
+    opt.position_lr_max_steps = args.position_lr_max_steps
+    opt.reg3d_interval = args.reg3d_interval
+    opt.reg3d_k = args.reg3d_k
+    opt.reg3d_lambda_val = args.reg3d_lambda_val
+    opt.reg3d_max_points = args.reg3d_max_points
+    opt.reg3d_sample_size = args.reg3d_sample_size
+    opt.rotation_lr = args.rotation_lr
+    opt.scaling_lr = args.scaling_lr
+
+    # Pipeline parameters
+    pipe = GroupParams()
+    pipe.compute_cov3D_python = False
+    pipe.convert_SHs_python = False
+    pipe.debug = False
+
+    # Additional attack setup
+    selected_obj_ids = torch.tensor(args.selected_obj_ids, device=args.data_device)
+    target = torch.tensor(args.target, device=args.data_device)
+    start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
+    shift_amount = args.shift_amount
+
+    print("Setup complete. Running the pipeline...")
 
     # cleanup render and preds directories
     subprocess.run(["make", "clean"], shell=True)
@@ -280,9 +409,9 @@ if __name__ == "__main__":
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = 5.0
             alpha = 0.001
-            gaussian_color_linf_attack(gaussians, alpha, epsilon)
-            gaussian_position_linf_attack(gaussians, alpha, epsilon)
-            gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
+            gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            # gaussian_position_linf_attack(gaussians, alpha, epsilon)
+            # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
 
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
@@ -351,3 +480,8 @@ if __name__ == "__main__":
         gaussians.optimizer.zero_grad(set_to_none=True)
         model.zero_grad()
         print(f"Success: {success}")
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)
