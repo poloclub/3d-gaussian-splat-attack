@@ -88,6 +88,7 @@ def parse_args():
     parser.add_argument("--end_cam", type=int, default=1, help="End index for camera views")
     parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
     parser.add_argument("--shift_amount", type=float, default=0.15, help="Shift amount for additional cameras")
+    parser.add_argument("--attack_conf_thresh", type=float, default=0.7, help="Confidence threshold for attack")
 
     return parser.parse_args()
 
@@ -145,43 +146,43 @@ def parse_args():
 # modify the object iD to select another item in the scene.
 # obj 175 is the road sign in the neighborhood scene
 # obj 221 is one of the trucks
-selected_obj_ids = torch.tensor([35], device='cuda')
+# selected_obj_ids = torch.tensor([35], device='cuda')
 select_thresh = 0.5 # selected threshold for the gaussian group
-target = torch.tensor([19]) 
+# target = torch.tensor([19]) 
 # cam_idx = 49
-start_cam = 0
-end_cam = 1
+# start_cam = 0
+# end_cam = 1
 # create sequence of cameras with nearby views
-add_cams = 1
-shift_amount = 0.15  # Adjust this value based on how far you want to shift
+# add_cams = 1
+# shift_amount = 0.15  # Adjust this value based on how far you want to shift
 
-def gaussian_position_linf_attack(gaussian, alpha, epsilon):
+def gaussian_position_linf_attack(gaussian, alpha, epsilon, features_xyz):
     with torch.no_grad():
         f_xyz_eta = alpha * torch.sign(gaussian._xyz.grad)
         f_xyz_eta.mul_(-1) # comment out if desire Untargeted
         gaussian._xyz.add_(f_xyz_eta)
-        gaussian._xyz.sub_(original_features_xyz).clamp_(-epsilon, epsilon).add_(original_features_xyz)
+        gaussian._xyz.sub_(features_xyz).clamp_(-epsilon, epsilon).add_(features_xyz)
 
-def gaussian_rotation_linf_attack(gaussian, alpha, epsilon):
+def gaussian_rotation_linf_attack(gaussian, alpha, epsilon, features_rotation):
     with torch.no_grad():
         f_rotation_eta = alpha * torch.sign(gaussian._rotation.grad)
         f_rotation_eta.mul_(-1)  # Targeted attack adjustment
         gaussian._rotation.add_(f_rotation_eta)
-        gaussian._rotation.sub_(original_features_rotation).clamp_(-epsilon, epsilon).add_(original_features_rotation)
+        gaussian._rotation.sub_(features_rotation).clamp_(-epsilon, epsilon).add_(features_rotation)
 
-def gaussian_opacity_linf_attack(gaussian, alpha, epsilon):
+def gaussian_opacity_linf_attack(gaussian, alpha, epsilon, features_opacity):
     with torch.no_grad():
         f_opacity_eta = alpha * torch.sign(gaussian._opacity.grad)
         f_opacity_eta.mul_(-1)  # Targeted attack adjustment
         gaussian._opacity.add_(f_opacity_eta)
-        gaussian._opacity.sub_(original_features_opacity).clamp_(-epsilon, epsilon).add_(original_features_opacity)
+        gaussian._opacity.sub_(features_opacity).clamp_(-epsilon, epsilon).add_(features_opacity)
 
-def gaussian_scaling_linf_attack(gaussian, alpha, epsilon):
+def gaussian_scaling_linf_attack(gaussian, alpha, epsilon, features_scaling):
     with torch.no_grad():
         f_scaling_eta = alpha * torch.sign(gaussian._scaling.grad)
         f_scaling_eta.mul_(-1)  # Targeted attack adjustment
         gaussian._scaling.add_(f_scaling_eta)
-        gaussian._scaling.sub_(original_features_scaling).clamp_(-epsilon, epsilon).add_(original_features_scaling)
+        gaussian._scaling.sub_(features_scaling).clamp_(-epsilon, epsilon).add_(features_scaling)
 
 def gaussian_color_linf_attack(gaussian, alpha, epsilon, features_rest, features_dc):
     with torch.no_grad():
@@ -282,6 +283,7 @@ def main(args):
     target = torch.tensor(args.target, device=args.data_device)
     start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
     shift_amount = args.shift_amount
+    attack_conf_thresh = args.attack_conf_thresh
 
     print("Setup complete. Running the pipeline...")
 
@@ -409,9 +411,9 @@ def main(args):
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = 5.0
             alpha = 0.001
-            gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
-            # gaussian_position_linf_attack(gaussians, alpha, epsilon)
-            # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
+            # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
+            # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
 
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
@@ -448,7 +450,7 @@ def main(args):
                     rendered_img_input = dt2_input(img_path)
                     success = save_adv_image_preds(
                         model, dt2_config, input=rendered_img_input,
-                        instance_mask_thresh=0.4,
+                        instance_mask_thresh=attack_conf_thresh,
                         target=target, untarget=None, is_targeted=True,
                         path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
                     )
@@ -466,7 +468,7 @@ def main(args):
                 rendered_img_input = dt2_input(img_path)
                 success = save_adv_image_preds(
                     model, dt2_config, input=rendered_img_input,
-                    instance_mask_thresh=0.4,
+                    instance_mask_thresh=attack_conf_thresh,
                     target=target, untarget=None, is_targeted=True,
                     path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png')
                 )
