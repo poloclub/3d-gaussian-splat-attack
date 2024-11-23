@@ -153,7 +153,7 @@ def model_input(model, x, target, bboxes, batch_size=1):
         # pad tensor if only dealing w/ single bbox
         gt_boxes = ch.tensor(bboxes).unsqueeze(0).unsqueeze(0)
     else :
-        gt_boxes = ch.tensor(bboxes)
+        gt_boxes = ch.tensor(bboxes).unsqueeze(1)
 
     inputs = list()
     for i in  range(0, x.shape[0]):                
