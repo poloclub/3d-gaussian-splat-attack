@@ -90,6 +90,7 @@ def parse_args():
     parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
     parser.add_argument("--shift_amount", type=float, default=0.15, help="Shift amount for additional cameras")
     parser.add_argument("--attack_conf_thresh", type=float, default=0.7, help="Confidence threshold for attack")
+    parser.add_argument("--batch_mode", action="store_true", help="Enable batch mode")
 
     return parser.parse_args()
 
@@ -289,6 +290,8 @@ def main(args):
     start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
     shift_amount = args.shift_amount
     attack_conf_thresh = args.attack_conf_thresh
+    batch_mode = args.batch_mode  # Set this to False for single camera mode
+
 
     print("Setup complete. Running the pipeline...")
 
@@ -390,7 +393,6 @@ def main(args):
         bbox = np.expand_dims(np.array(bbox), axis=0)
 
     gt_bboxes = np.array(bboxes)
-    batch_mode = False  # Set this to False for single camera mode
 
     for it in range(1000):
         renders = []
