@@ -39,6 +39,7 @@ def parse_args():
 
     # Dataset parameters
     parser.add_argument("--data_device", type=str, default="cuda", help="Device to use for data processing")
+    parser.add_argument("--device", type=str, default="cuda", help="Device to use for computation")
     parser.add_argument("--eval", action="store_true", help="Set evaluation mode")
     parser.add_argument("--images", type=str, required=True, help="Path to images directory")
     parser.add_argument("--model_path", type=str, required=True, help="Path to model")
@@ -247,6 +248,7 @@ def main(args):
     dataset.source_path = args.source_path
     dataset.train_split = args.train_split
     dataset.white_background = False # args.white_background
+    dataset.device = args.device
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -277,8 +279,11 @@ def main(args):
     pipe.compute_cov3D_python = False
     pipe.convert_SHs_python = False
     pipe.debug = False
-
+    # set the cuda device to the args.device
+    DEVICE = f"cuda:{args.device}" 
+    torch.cuda.set_device(DEVICE)
     # Additional attack setup
+
     selected_obj_ids = torch.tensor(args.selected_obj_ids, device=args.data_device)
     target = torch.tensor(args.target, device=args.data_device)
     start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
@@ -291,7 +296,7 @@ def main(args):
     subprocess.run(["make", "clean"], shell=True)
         
     # detectron2 
-    model, dt2_config = detectron2_model()
+    model, dt2_config = detectron2_model(device=args.device)
     
     # Load Gaussian Splat model
     gaussians = GaussianModel(dataset.sh_degree)
@@ -301,7 +306,7 @@ def main(args):
     print("Num classes: ",num_classes)
     classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
     classifier.cuda()
-    classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth")))
+    classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
 
     with torch.no_grad():
         logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
@@ -403,7 +408,7 @@ def main(args):
             renders.append(render_pkg["render"])
             renders = torch.stack(renders)
 
-            loss = model_input(model, renders, target=target, bboxes=np.expand_dims(gt_bboxes, axis=0), batch_size=renders.shape[0])
+            loss = model_input(model, renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
  
         print(f"Loss: {loss}")
         loss.backward(retain_graph=True)
