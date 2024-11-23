@@ -151,7 +151,7 @@ def model_input(model, x, target, bboxes, batch_size=1):
     width = x.shape[3]
     if ch.tensor(bboxes).dim() == 1:
         # pad tensor if only dealing w/ single bbox
-        gt_boxes = ch.tensor(bboxes).unsqueeze(0)
+        gt_boxes = ch.tensor(bboxes).unsqueeze(0).unsqueeze(0)
     else :
         gt_boxes = ch.tensor(bboxes)
 
@@ -174,7 +174,7 @@ def model_input(model, x, target, bboxes, batch_size=1):
     del x
     return loss
 
-def detectron2_model():
+def detectron2_model(device:int):
     """
     Initializes and configures a Detectron2 model for object detection.
 
@@ -190,8 +190,8 @@ def detectron2_model():
     weights_file = "pretrained-models/faster_rcnn_R_50_FPN_3x/model_final.pth"
     score_thresh = 0.5
     
-    cuda_visible_device = os.environ.get("CUDA_VISIBLE_DEVICES", default=1)
-    DEVICE = f"cuda:{cuda_visible_device}"
+    # cuda_visible_device = os.environ.get("CUDA_VISIBLE_DEVICES", default=1)
+    DEVICE = f"cuda:{device}" 
     
     logging.basicConfig(level=logging.INFO)
     dt2_config = get_cfg()
