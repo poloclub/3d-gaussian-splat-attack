@@ -75,7 +75,7 @@
             "program": "attack.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {"CUDA_VISIBLE_DEVICES": "0"},
+            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},
             "args": [
                 // "--model_path", "/raid/mhull32/gaussian-grouping/output/living_room",
                 // "--source_path", "/raid/mhull32/gaussian-grouping/data/living_room",
@@ -83,13 +83,21 @@
                 // "--selected_obj_ids", "35",
                 "--model_path", "/raid/mhull32/gaussian-grouping/output/industrial_park",
                 "--source_path", "/raid/mhull32/gaussian-grouping/data/industrial_park",
-                "--target", "10",
-                "--selected_obj_ids", "97",                
+                "--target", "2",
+                "--selected_obj_ids", "97",
+                // "--model_path", "/raid/mhull32/gaussian-grouping/output/city_square",
+                // "--source_path", "/raid/mhull32/gaussian-grouping/data/city_square",
+                // "--target", "0",
+                // "--selected_obj_ids", "117",
+                "--cam_indices", "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000",
                 "--start_cam", "0",
                 "--end_cam", "10",
                 "--add_cams", "1",
                 "--shift_amount", "0.15",
+                "--batch_mode", 
+                "--attack_conf_thresh", "0.7",
                 "--data_device", "cuda",
+                "--device", "7",                
                 "--images", "images",
                 "--n_views", "100",
                 "--num_classes", "256",
@@ -118,7 +126,7 @@
                 "--rotation_lr", "0.001",
                 "--scaling_lr", "0.005",
                 "--select_thresh", "0.5",
-                "--train_split"            
+                "--train_split"
             ]
         }    
     ]
