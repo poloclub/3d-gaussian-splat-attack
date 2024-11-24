@@ -91,6 +91,7 @@ def parse_args():
     parser.add_argument("--shift_amount", type=float, default=0.15, help="Shift amount for additional cameras")
     parser.add_argument("--attack_conf_thresh", type=float, default=0.7, help="Confidence threshold for attack")
     parser.add_argument("--batch_mode", action="store_true", help="Enable batch mode")
+    parser.add_argument("--cam_indices", type=int, nargs="+", required=False, help="Select specific cameras")
 
     return parser.parse_args()
 
@@ -250,6 +251,7 @@ def main(args):
     dataset.train_split = args.train_split
     dataset.white_background = False # args.white_background
     dataset.device = args.device
+    dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -304,7 +306,7 @@ def main(args):
     # Load Gaussian Splat model
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
-    scene = Scene(dataset, gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+    scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
     num_classes = dataset.num_classes
     print("Num classes: ",num_classes)
     classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
@@ -411,14 +413,14 @@ def main(args):
             renders = torch.stack(renders)
 
             loss = model_input(model, renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
- 
-        print(f"Loss: {loss}")
+
+        print(f"Iteration: {it}, Loss: {loss}")
         loss.backward(retain_graph=True)
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = 5.0
             alpha = 0.001
-            # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
 
@@ -443,6 +445,7 @@ def main(args):
                 concat_renders.append(render_pkg["render"])
 
             if batch_mode:
+                successes = []
                 for j, cam in enumerate(viewpoint_stack):
                     img_path = f"renders/render_concat_{j}.png"
                     cr = concat_renders[j]
@@ -461,6 +464,12 @@ def main(args):
                         target=target, untarget=None, is_targeted=True,
                         path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
                     )
+                    successes.append(success)
+                num_successes = sum(successes)
+                print(f"Successes: {num_successes}/{len(viewpoint_stack)}")
+                if num_successes == len(viewpoint_stack):
+                    print ("All camera viewpoints attacked successfully")
+                    break
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
@@ -483,12 +492,12 @@ def main(args):
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
                     if len(viewpoint_stack) == 0:
-                        print ("All cameras attacked successfully")
+                        print ("All camera viewpoints attacked successfully")
                         break
+                print(f"Success: {success}")
         del combined_gaussians
         gaussians.optimizer.zero_grad(set_to_none=True)
         model.zero_grad()
-        print(f"Success: {success}")
 
 
 if __name__ == "__main__":
