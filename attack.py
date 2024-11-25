@@ -295,7 +295,6 @@ def main(args):
     batch_mode = args.batch_mode  # Set this to False for single camera mode
 
 
-    print("Setup complete. Running the pipeline...")
 
     # cleanup render and preds directories
     subprocess.run(["make", "clean"], shell=True)
@@ -313,14 +312,15 @@ def main(args):
     classifier.cuda()
     classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
 
+    print("Setup complete. Running the pipeline...")
     with torch.no_grad():
         logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
         prob_obj3d = torch.softmax(logits3d, dim=0)
         mask = prob_obj3d[selected_obj_ids, :, :] > select_thresh
         mask3d = mask.any(dim=0).squeeze()
-        print("calculating convex hull")
+        print("Calculating convex hull of Gaussian group")
         mask3d_convex = points_inside_convex_hull(gaussians._xyz.detach(),mask3d,outlier_factor=1.0)
-        print("finished calculating convex hull")
+        print("Finished calculating convex hull")
         mask3d = torch.logical_or(mask3d,mask3d_convex)
         mask3d = mask3d.float()[:,None,None]
         #mask3d = mask3d.squeeze()
@@ -337,8 +337,8 @@ def main(args):
     original_features_dc = gaussians._features_dc.clone().detach().requires_grad_(True)
     original_features_xyz = gaussians._xyz.clone().detach().requires_grad_(True)
     original_features_scaling = gaussians._scaling.clone().detach().requires_grad_(True)
-    # original_features_opacity = gaussians._opacity.clone().detach().requires_grad_(True)
-    # original_features_rotation = gaussians._rotation.clone().detach().requires_grad_(True)    
+    original_features_opacity = gaussians._opacity.clone().detach().requires_grad_(True)
+    original_features_rotation = gaussians._rotation.clone().detach().requires_grad_(True)    
 
     bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -422,7 +422,9 @@ def main(args):
             alpha = 0.001
             gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
-            # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
+            gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
+            gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
+            gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
 
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
