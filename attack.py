@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument("--source_path", type=str, required=True, help="Path to data source")
     parser.add_argument("--train_split", action="store_true", help="Use train split")
     parser.add_argument("--white_background", action="store_true", help="Use white background")
+    parser.add_argument("--no-groups", action="store_true", help="Model without Gaussian groups")
 
     # Optimization parameters
     parser.add_argument("--densification_interval", type=int, default=100, help="Interval for densification")
@@ -252,6 +253,7 @@ def main(args):
     dataset.white_background = False # args.white_background
     dataset.device = args.device
     dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
+    dataset.no_groups = args.no_groups
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -308,29 +310,33 @@ def main(args):
     scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
     num_classes = dataset.num_classes
     print("Num classes: ",num_classes)
-    classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
-    classifier.cuda()
-    classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
-
-    print("Setup complete. Running the pipeline...")
-    with torch.no_grad():
-        logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
-        prob_obj3d = torch.softmax(logits3d, dim=0)
-        mask = prob_obj3d[selected_obj_ids, :, :] > select_thresh
-        mask3d = mask.any(dim=0).squeeze()
-        print("Calculating convex hull of Gaussian group")
-        mask3d_convex = points_inside_convex_hull(gaussians._xyz.detach(),mask3d,outlier_factor=1.0)
-        print("Finished calculating convex hull")
-        mask3d = torch.logical_or(mask3d,mask3d_convex)
-        mask3d = mask3d.float()[:,None,None]
-        #mask3d = mask3d.squeeze()
-    del classifier
-    torch.cuda.empty_cache()
     
+    if dataset.no_groups == False:
+        classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
+        classifier.cuda()
+        classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
+
+        with torch.no_grad():
+            logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
+            prob_obj3d = torch.softmax(logits3d, dim=0)
+            mask = prob_obj3d[selected_obj_ids, :, :] > select_thresh
+            mask3d = mask.any(dim=0).squeeze()
+            print("Calculating convex hull of Gaussian group")
+            mask3d_convex = points_inside_convex_hull(gaussians._xyz.detach(),mask3d,outlier_factor=1.0)
+            print("Finished calculating convex hull")
+            mask3d = torch.logical_or(mask3d,mask3d_convex)
+            mask3d = mask3d.float()[:,None,None]
+            #mask3d = mask3d.squeeze()
+        del classifier
+        torch.cuda.empty_cache()
+        
     # copy gaussians variable to new object
     gaussians_original = copy.deepcopy(gaussians)
-    gaussians_original.removal_setup(opt,mask3d) # inverse 
-    gaussians.removal_setup(opt,~mask3d.bool())
+    if dataset.no_groups == False:
+        gaussians_original.removal_setup(opt,mask3d) # inverse 
+        gaussians.removal_setup(opt,~mask3d.bool())
+    
+    print("Setup complete. Running the pipeline...")
     # select feature that we want to attack
     manipulable_features = ["features_rest", "features_dc", "xyz", "scaling", "opacity"]
     original_features_rest = gaussians._features_rest.clone().detach().requires_grad_(True)
@@ -377,7 +383,7 @@ def main(args):
                         .numpy() 
         pil_img = Image.fromarray(np_img)
         pil_img_bw = pil_img.convert('L')
-        bw_tresh = 128
+        bw_tresh = 20
         pil_img_bw = pil_img_bw.point(lambda p: p > bw_tresh and 255)
         # pil_img_bw = PIL.ImageOps.invert(pil_img_bw)
         bbox = pil_img_bw.getbbox()
@@ -419,12 +425,12 @@ def main(args):
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = 5.0
-            alpha = 0.001
+            alpha = 0.005
             gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
-            gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
-            gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
-            gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
-            gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
+            # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
+            # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
+            # gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
+            # gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
 
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
@@ -472,6 +478,9 @@ def main(args):
                 if num_successes == len(viewpoint_stack):
                     print ("All camera viewpoints attacked successfully")
                     break
+                if num_successes >= 3:
+                    print("saving gaussians")
+                    combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
