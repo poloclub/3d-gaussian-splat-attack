@@ -154,7 +154,16 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Splat assets / data
 *.ply
 data/*
+splats/*
+renders/*
+preds/*
+
+# models
+*.pth  
+
+detectron2/*
 
 settings.json
