@@ -16,6 +16,21 @@ from detectron2.data.detection_utils import *
 from detectron2.modeling import build_model
 from detectron2.utils.events import EventStorage
 
+
+def model_eval_mode(model):
+    model.train = False
+    model.training = False
+    model.proposal_generator.training = False
+    model.roi_heads.training = False
+    return model
+
+def model_train_mode(model):
+    model.train = True
+    model.training = True
+    model.proposal_generator.training = True
+    model.roi_heads.training = True
+    return model
+
 def dt2_input(image_path:str)->dict:
     """
     Construct a Detectron2-friendly input for an image
@@ -44,6 +59,8 @@ def dt2_input(image_path:str)->dict:
     input['instances'] = instances
     return input
 
+
+
 def save_adv_image_preds(model \
     , dt2_config \
     , input \
@@ -59,10 +76,7 @@ def save_adv_image_preds(model \
     instance_mask_thresh:float threshold pred boxes on confidence score
     path:str where to save image
     """ 
-    model.train = False
-    model.training = False
-    model.proposal_generator.training = False
-    model.roi_heads.training = False    
+    model = model_eval_mode(model)  
     with ch.no_grad():
         adv_outputs = model([input])
         perturbed_image = input['image'].data.permute((1,2,0)).detach().cpu().numpy()
@@ -72,24 +86,41 @@ def save_adv_image_preds(model \
         v = Visualizer(pbi, MetadataCatalog.get(dt2_config.DATASETS.TRAIN[0]),scale=1.0)
         instances = adv_outputs[0]['instances']
         things = np.array(MetadataCatalog.get(dt2_config.DATASETS.TRAIN[0]).thing_classes) # holds class labels
-        predicted_classes = things[instances.pred_classes.cpu().numpy().tolist()] 
-        print(f'Predicted Class: {predicted_classes}')        
         mask = instances.scores > instance_mask_thresh
         instances = instances[mask]
+        predicted_classes = things[instances.pred_classes.cpu().numpy().tolist()] 
+        print(f'Predicted Class: {predicted_classes}')        
         out = v.draw_instance_predictions(instances.to("cpu"))
         target_pred_exists = target in instances.pred_classes.cpu().numpy().tolist()
         untarget_pred_not_exists = untarget not in instances.pred_classes.cpu().numpy().tolist()
         pred = out.get_image()
-    model.train = True
-    model.training = True
-    model.proposal_generator.training = True
-    model.roi_heads.training = True  
+
+    model = model_train_mode(model)
+    
     PIL.Image.fromarray(pred).save(path)
     if is_targeted and target_pred_exists:
         return True
     elif (not is_targeted) and (untarget_pred_not_exists):
         return True
     return False
+
+def get_instances_bboxes(model, input, target=None, threshold=0.7):
+    """
+    Get the bounding boxes from the model's predictions
+    """
+    model = model_eval_mode(model)
+    with ch.no_grad():
+        outputs = model([input])
+        instances = outputs[0]['instances']
+        mask = instances.scores > threshold
+        if target is not None:
+            mask = mask & (instances.pred_classes == target)
+        instances = instances[mask]
+        bboxes = instances.pred_boxes.tensor.detach().cpu().numpy()
+        if bboxes.size == 0:
+            return np.array([[0.0, 0.0, input['height'], input['width']]])
+    model = model_train_mode(model)
+    return bboxes 
 
 def model_input(model, x, target, bboxes, batch_size=1):
     """
@@ -99,12 +130,11 @@ def model_input(model, x, target, bboxes, batch_size=1):
     each GT object in the scene.
     """
     
-    if batch_size > 1:
-        x = x.reshape(x.shape[0],batch_size,x.shape[1]//batch_size,x.shape[2]).permute(1, 0, 2, 3).requires_grad_()
-        x.retain_grad()
-    else:
-        x = x.unsqueeze(0).requires_grad_()
-        x.retain_grad()
+    model = model_train_mode(model)
+
+    if x.dim() == 3:
+        x = x.unsqueeze(0).requires_grad_()  
+    x.retain_grad()
     # visualize x
     # z = x[0].detach().cpu().numpy()
     # PIL.Image.fromarray(((z - z.min()) / (z.max() - z.min())*255).clip(0, 255).astype(np.uint8)).save("renders/bw/tensor.png")
@@ -121,15 +151,15 @@ def model_input(model, x, target, bboxes, batch_size=1):
     width = x.shape[3]
     if ch.tensor(bboxes).dim() == 1:
         # pad tensor if only dealing w/ single bbox
-        gt_boxes = ch.tensor(bboxes).unsqueeze(0)
+        gt_boxes = ch.tensor(bboxes).unsqueeze(0).unsqueeze(0)
     else :
-        gt_boxes = ch.tensor(bboxes)
+        gt_boxes = ch.tensor(bboxes).unsqueeze(1)
 
     inputs = list()
     for i in  range(0, x.shape[0]):                
         instances = Instances(image_size=(height,width))
         instances.gt_classes = target.long()
-        instances.gt_boxes = Boxes(gt_boxes[i].unsqueeze(0))
+        instances.gt_boxes = Boxes(gt_boxes[i])
         input = {}
         input['image']  = x[i]    
         input['filename'] = ''
@@ -144,7 +174,7 @@ def model_input(model, x, target, bboxes, batch_size=1):
     del x
     return loss
 
-def detectron2_model():
+def detectron2_model(device:int):
     """
     Initializes and configures a Detectron2 model for object detection.
 
@@ -158,10 +188,10 @@ def detectron2_model():
     """    
     model_config = "pretrained-models/faster_rcnn_R_50_FPN_3x/config.yaml"
     weights_file = "pretrained-models/faster_rcnn_R_50_FPN_3x/model_final.pth"
-    score_thresh = 0.2
+    score_thresh = 0.5
     
-    cuda_visible_device = os.environ.get("CUDA_VISIBLE_DEVICES", default=1)
-    DEVICE = f"cuda:{cuda_visible_device}"
+    # cuda_visible_device = os.environ.get("CUDA_VISIBLE_DEVICES", default=1)
+    DEVICE = f"cuda:{device}" 
     
     logging.basicConfig(level=logging.INFO)
     dt2_config = get_cfg()
