@@ -250,7 +250,7 @@ def main(args):
     dataset.sh_degree = args.sh_degree
     dataset.source_path = args.source_path
     dataset.train_split = args.train_split
-    dataset.white_background = False # args.white_background
+    dataset.white_background = args.white_background
     dataset.device = args.device
     dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
     dataset.no_groups = args.no_groups
@@ -373,7 +373,7 @@ def main(args):
     # for each benign render, get the bbox w/ detection of target class.
     bboxes = []
     for i, cam in enumerate(viewpoint_stack):
-        render_pkg = render(cam, gaussians, pipe, bg)
+        render_pkg = render(cam, gaussians, pipe, torch.tensor([0,0,0],dtype=torch.float32, device="cuda")) # always use black background for detection
         img_path = f"renders/render_{i}.png"
         np_img = (torch.clamp(render_pkg["render"], min=0, max=1.0) * 255) \
                         .byte() \
@@ -402,7 +402,7 @@ def main(args):
 
     gt_bboxes = np.array(bboxes)
 
-    for it in range(1000):
+    for it in range(1500):
         renders = []
         
         if batch_mode:
@@ -424,8 +424,10 @@ def main(args):
         loss.backward(retain_graph=True)
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
+            #FIXME - epsilon as param
             epsilon = 5.0
-            alpha = 0.005
+            #FIXME - alpha as param
+            alpha = 0.0025
             gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
@@ -478,6 +480,7 @@ def main(args):
                 if num_successes == len(viewpoint_stack):
                     print ("All camera viewpoints attacked successfully")
                     break
+                #FIXME - add as param
                 if num_successes >= 3:
                     print("saving gaussians")
                     combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))
@@ -504,6 +507,8 @@ def main(args):
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
                     if len(viewpoint_stack) == 0:
                         print ("All camera viewpoints attacked successfully")
+                        print("saving gaussians")
+                        combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
                         break
                 print(f"Success: {success}")
         del combined_gaussians
