@@ -481,9 +481,9 @@ def main(args):
                     print ("All camera viewpoints attacked successfully")
                     break
                 #FIXME - add as param
-                if num_successes >= 3:
+                if num_successes >= 1:
                     print("saving gaussians")
-                    combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))
+                    combined_gaussians.save_ply(os.path.join("output/industrial_park", f"point_cloud_{it}.ply"))
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
