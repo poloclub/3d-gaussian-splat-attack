@@ -1,7 +1,9 @@
 import torch
+import copy
 from torch import nn
 from scene.gaussian_model import GaussianModel
 from arguments import GroupParams
+
 opt = GroupParams()
 opt.densification_interval = 100
 opt.density_From_iter = 500
@@ -28,8 +30,10 @@ opt.scaling_lr = 0.005
 
 
 def main():
+    DEVICE = f"cuda:7" 
+    torch.cuda.set_device(DEVICE)    
     # Initialize the GaussianModel with a specific SH degree
-    model = GaussianModel(sh_degree=2)
+    gaussians = GaussianModel(sh_degree=2)
 
     # List of .ply file paths to be combined
     ply_paths = [
@@ -38,25 +42,28 @@ def main():
     ]
 
     # Combine the .ply files
-    model.combine_splats(ply_paths)
-
+    gaussians.combine_splats(ply_paths)
 
     # Demonstrate how to extract obj_1 and obj_2 using self.masks
-    obj_1_mask = model.masks[0]
-    obj_2_mask = model.masks[1]
+    obj_1_mask = gaussians.masks[0]
+    obj_2_mask = gaussians.masks[1]
+
+    # Pad obj_1_mask with the shape of obj_2_mask
+    pad_size = obj_2_mask.shape[0]
+    if pad_size > 0:
+        padding = torch.zeros(pad_size, dtype=torch.bool, device=obj_1_mask.device)
+        obj_1_mask = torch.cat((obj_1_mask, padding), dim=0)
+
     # make a mask3D
-    obj_1_mask3d = obj_1_mask.view(1,obj_1_mask.shape[0],1)
-    obj_2_mask3d = obj_2_mask.view(1,obj_2_mask.shape[0],1)
+    obj_1_mask3d = obj_1_mask.view(1, obj_1_mask.shape[0], 1)
     obj_1_mask3d = obj_1_mask3d.any(dim=0).squeeze()
-    obj_2_mask3d = obj_2_mask3d.any(dim=0).squeeze()
     
-    obj_1_mask3d = obj_1_mask3d.float()[:,None,None]
-    obj_2_mask3d = obj_2_mask3d.float()[:,None,None]
+    obj_1_mask3d = obj_1_mask3d.float()[:, None, None]
 
+    original_gaussians = copy.deepcopy(gaussians)
     # Updated apply_mask function to handle mask correctly
-
-    model.removal_setup(opt,mask3d) # inverse 
-    model.removal_setup(opt,~mask3d.bool())
+    original_gaussians.removal_setup(opt, obj_1_mask3d) # inverse 
+    gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
 
 if __name__ == "__main__":
     main()
