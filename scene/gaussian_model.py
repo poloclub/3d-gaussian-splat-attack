@@ -466,6 +466,95 @@ class GaussianModel:
 
         self.active_sh_degree = self.max_sh_degree
 
+    def combine_splats(self, ply_paths):
+        """
+        Load and merge multiple .ply files, saving a mask to track the start and stop indices of each .ply file.
+
+        Args:
+            ply_paths (list of str): List of file paths to .ply files to be combined.
+        """
+        combined_xyz = []
+        combined_features_dc = []
+        combined_features_rest = []
+        combined_opacity = []
+        combined_scaling = []
+        combined_rotation = []
+        combined_objects_dc = []
+        masks = []
+
+        current_index = 0
+
+        for path in ply_paths:
+            plydata = PlyData.read(path)
+
+            xyz = np.stack((np.asarray(plydata.elements[0]["x"]),
+                            np.asarray(plydata.elements[0]["y"]),
+                            np.asarray(plydata.elements[0]["z"])), axis=1)
+            opacities = np.asarray(plydata.elements[0]["opacity"])[..., np.newaxis]
+
+            features_dc = np.zeros((xyz.shape[0], 3, 1))
+            features_dc[:, 0, 0] = np.asarray(plydata.elements[0]["f_dc_0"])
+            features_dc[:, 1, 0] = np.asarray(plydata.elements[0]["f_dc_1"])
+            features_dc[:, 2, 0] = np.asarray(plydata.elements[0]["f_dc_2"])
+
+            extra_f_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_rest_")]
+            extra_f_names = sorted(extra_f_names, key=lambda x: int(x.split('_')[-1]))
+            expected_size = 3 * ((self.max_sh_degree + 1) ** 2 - 1)
+            features_extra = np.zeros((xyz.shape[0], len(extra_f_names)))
+            for idx, attr_name in enumerate(extra_f_names):
+                features_extra[:, idx] = np.asarray(plydata.elements[0][attr_name])
+            
+            # Handle mismatched feature sizes by padding or truncating
+            if features_extra.shape[1] < expected_size:
+                padding = np.zeros((features_extra.shape[0], expected_size - features_extra.shape[1]))
+                features_extra = np.hstack((features_extra, padding))
+            elif features_extra.shape[1] > expected_size:
+                features_extra = features_extra[:, :expected_size]
+            
+            features_extra = features_extra.reshape((features_extra.shape[0], 3, (self.max_sh_degree + 1) ** 2 - 1))
+
+            scale_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("scale_")]
+            scale_names = sorted(scale_names, key=lambda x: int(x.split('_')[-1]))
+            scales = np.zeros((xyz.shape[0], len(scale_names)))
+            for idx, attr_name in enumerate(scale_names):
+                scales[:, idx] = np.asarray(plydata.elements[0][attr_name])
+
+            rot_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("rot")]
+            rot_names = sorted(rot_names, key=lambda x: int(x.split('_')[-1]))
+            rots = np.zeros((xyz.shape[0], len(rot_names)))
+            for idx, attr_name in enumerate(rot_names):
+                rots[:, idx] = np.asarray(plydata.elements[0][attr_name])
+
+            objects_dc = np.zeros((xyz.shape[0], self.num_objects, 1))
+
+            combined_xyz.append(torch.tensor(xyz, dtype=torch.float, device="cuda"))
+            combined_features_dc.append(torch.tensor(features_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous())
+            combined_features_rest.append(torch.tensor(features_extra, dtype=torch.float, device="cuda").transpose(1, 2).contiguous())
+            combined_opacity.append(torch.tensor(opacities, dtype=torch.float, device="cuda"))
+            combined_scaling.append(torch.tensor(scales, dtype=torch.float, device="cuda"))
+            combined_rotation.append(torch.tensor(rots, dtype=torch.float, device="cuda"))
+            combined_objects_dc.append(torch.tensor(objects_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous())
+
+            # Create a mask for the current .ply file
+            mask = torch.zeros((xyz.shape[0]), dtype=torch.bool, device="cuda")
+            mask[current_index:current_index + xyz.shape[0]] = True
+            masks.append(mask)
+            current_index += xyz.shape[0]
+
+        if not combined_xyz:
+            raise ValueError("No valid .ply files were loaded.")
+
+        self._xyz = nn.Parameter(torch.cat(combined_xyz).requires_grad_(True))
+        self._features_dc = nn.Parameter(torch.cat(combined_features_dc).requires_grad_(True))
+        self._features_rest = nn.Parameter(torch.cat(combined_features_rest).requires_grad_(True))
+        self._opacity = nn.Parameter(torch.cat(combined_opacity).requires_grad_(True))
+        self._scaling = nn.Parameter(torch.cat(combined_scaling).requires_grad_(True))
+        self._rotation = nn.Parameter(torch.cat(combined_rotation).requires_grad_(True))
+        self._objects_dc = nn.Parameter(torch.cat(combined_objects_dc).requires_grad_(True))
+
+        # Save the masks
+        self.masks = masks
+
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
