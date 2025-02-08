@@ -123,15 +123,20 @@ def main(args):
     dataset.device = args.device
     dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
     dataset.no_groups = args.no_groups
+    # Pipeline parameters
+    pipe = GroupParams()
+    pipe.compute_cov3D_python = False
+    pipe.convert_SHs_python = False
+    pipe.debug = False
 
     # Initialize the GaussianModel with a specific SH degree    
     gaussians = GaussianModel(dataset.sh_degree)
     gaussians.training_setup(opt)
-    scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+    scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
     # List of .ply file paths to be combined
     ply_paths = [
+        "output/bike/point_cloud_302_5.ply",
         "output/bike/point_cloud_109.ply",
-        "output/bike/point_cloud_302_5.ply"
     ]
 
     # Combine the .ply files
@@ -158,7 +163,18 @@ def main(args):
     original_gaussians.removal_setup(opt, obj_1_mask3d) # inverse 
     gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
 
-    render_pkg = render(cam, combined_gaussians, pipe, bg)
+    bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+    bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+    # single camera or range of cameras
+    viewpoint_stack = scene.getTrainCameras().copy()[0:] 
+    render_pkg = render(viewpoint_stack[0], gaussians, pipe, bg)
+    img_path = "renders/combined_splats/combined_splats.png"
+    Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
+                .byte()
+                .permute(1, 2, 0)
+                .contiguous()
+                .cpu()
+                .numpy()).save(img_path)
 
 if __name__ == "__main__":
     args = parse_args()
