@@ -134,34 +134,38 @@ def main(args):
     gaussians.training_setup(opt)
     scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
     # List of .ply file paths to be combined
+    # ply_paths = [
+    #     "output/bike/point_cloud_302_5.ply",
+    #     "output/bike/point_cloud_109.ply",
+    # ]
     ply_paths = [
-        "output/bike/point_cloud_302_5.ply",
-        "output/bike/point_cloud_109.ply",
-    ]
+        "output/room/plain_room.ply",
+        "output/room/truck.ply",
+    ]    
 
     # Combine the .ply files
     gaussians.combine_splats(ply_paths)
 
     # Demonstrate how to extract obj_1 and obj_2 using self.masks
-    obj_1_mask = gaussians.masks[0]
-    obj_2_mask = gaussians.masks[1]
+    # obj_1_mask = gaussians.masks[0]
+    # obj_2_mask = gaussians.masks[1]
 
-    # Pad obj_1_mask with the shape of obj_2_mask
-    pad_size = obj_2_mask.shape[0]
-    if pad_size > 0:
-        padding = torch.zeros(pad_size, dtype=torch.bool, device=obj_1_mask.device)
-        obj_1_mask = torch.cat((obj_1_mask, padding), dim=0)
+    # # Pad obj_1_mask with the shape of obj_2_mask
+    # pad_size = obj_2_mask.shape[0]
+    # if pad_size > 0:
+    #     padding = torch.zeros(pad_size, dtype=torch.bool, device=obj_1_mask.device)
+    #     obj_1_mask = torch.cat((obj_1_mask, padding), dim=0)
 
-    # make a mask3D
-    obj_1_mask3d = obj_1_mask.view(1, obj_1_mask.shape[0], 1)
-    obj_1_mask3d = obj_1_mask3d.any(dim=0).squeeze()
+    # # make a mask3D
+    # obj_1_mask3d = obj_1_mask.view(1, obj_1_mask.shape[0], 1)
+    # obj_1_mask3d = obj_1_mask3d.any(dim=0).squeeze()
     
-    obj_1_mask3d = obj_1_mask3d.float()[:, None, None]
+    # obj_1_mask3d = obj_1_mask3d.float()[:, None, None]
 
-    original_gaussians = copy.deepcopy(gaussians)
-    # Updated apply_mask function to handle mask correctly
-    original_gaussians.removal_setup(opt, obj_1_mask3d) # inverse 
-    gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
+    # original_gaussians = copy.deepcopy(gaussians)
+    # # Updated apply_mask function to handle mask correctly
+    # original_gaussians.removal_setup(opt, obj_1_mask3d) # inverse 
+    # gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
 
     bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
