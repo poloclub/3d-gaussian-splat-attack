@@ -171,14 +171,15 @@ def main(args):
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     # single camera or range of cameras
     viewpoint_stack = scene.getTrainCameras().copy()[0:] 
-    render_pkg = render(viewpoint_stack[0], gaussians, pipe, bg)
-    img_path = "renders/combined_splats/combined_splats.png"
-    Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
-                .byte()
-                .permute(1, 2, 0)
-                .contiguous()
-                .cpu()
-                .numpy()).save(img_path)
+    for i, camera in enumerate(viewpoint_stack):
+        render_pkg = render(camera, gaussians, pipe, bg)
+        img_path = f"renders/combined_splats/combined_splats_{i}.png"
+        Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
+                    .byte()
+                    .permute(1, 2, 0)
+                    .contiguous()
+                    .cpu()
+                    .numpy()).save(img_path)
 
 if __name__ == "__main__":
     args = parse_args()
