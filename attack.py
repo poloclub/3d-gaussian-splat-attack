@@ -53,6 +53,7 @@ def parse_args():
     parser.add_argument("--train_split", action="store_true", help="Use train split")
     parser.add_argument("--white_background", action="store_true", help="Use white background")
     parser.add_argument("--no-groups", action="store_true", help="Model without Gaussian groups")
+    parser.add_argument("--combine_splats", action="store_true", help="Combine splats")
 
     # Optimization parameters
     parser.add_argument("--densification_interval", type=int, default=100, help="Interval for densification")
@@ -254,6 +255,7 @@ def main(args):
     dataset.device = args.device
     dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
     dataset.no_groups = args.no_groups
+    dataset.combine_splats = args.combine_splats
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -304,22 +306,21 @@ def main(args):
     # detectron2 
     model, dt2_config = detectron2_model(device=args.device)
     
-    # Load Gaussian Splat model
-    gaussians = GaussianModel(dataset.sh_degree)
-    gaussians.training_setup(opt)
-    scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
-    num_classes = dataset.num_classes
-    print("Num classes: ",num_classes)
     
-    # Without groups, the perturbation will be applied to the entire scene.
-    # this is ideal scenes with a single object.
+    if dataset.no_groups == False and dataset.combine_splats == False:
+        # Load Gaussian Splat model
+        gaussians = GaussianModel(dataset.sh_degree)
+        gaussians.training_setup(opt)
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        num_classes = dataset.num_classes
+        print("Num classes: ",num_classes)     
 
-    if dataset.no_groups == False:
-        # assume groups are being used.
+        # assume groups are being used. The classifier is a pretrained model from 3DGS grouping training
+        # that predicts the segmentations / groups within the scene
         classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
         classifier.cuda()
         classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
-
+ 
         with torch.no_grad():
             logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
             prob_obj3d = torch.softmax(logits3d, dim=0)
@@ -339,9 +340,70 @@ def main(args):
         gaussians_original.removal_setup(opt,mask3d) # inverse 
         gaussians.removal_setup(opt,~mask3d.bool())
     
-    elif dataset.no_groups == True:
+    elif dataset.no_groups == True and dataset.combine_splats == False:
+        # Without groups, the perturbation will be applied to the entire scene.
+        # this is ideal scenes with a single object.
+        # Load Gaussian Splat model
+        gaussians = GaussianModel(dataset.sh_degree)
+        gaussians.training_setup(opt)
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        num_classes = dataset.num_classes
+        print("Num classes: ",num_classes)
         # copy gaussians variable to new object
         gaussians_original = copy.deepcopy(gaussians)
+
+    elif dataset.combine_splats == True:
+        gaussians = GaussianModel(dataset.sh_degree)
+        gaussians.training_setup(opt)
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        # List of .ply file paths to be combined
+        # ply_paths = [
+        #     "output/bike/point_cloud_302_5.ply",
+        #     "output/bike/point_cloud_109.ply",
+        # ]
+        ply_paths = [
+            "output/room/truck.ply",
+            "output/room/plain_room.ply",
+        ]    
+
+        # Combine the .ply files
+        gaussians.combine_splats(ply_paths)
+        # Demonstrate how to extract obj_1 and obj_2 using self.masks
+        obj_1_mask = gaussians.masks[0]
+        obj_2_mask = gaussians.masks[1]
+
+        # Pad obj_1_mask with the shape of obj_2_mask
+        pad_size = obj_2_mask.shape[0]
+        if pad_size > 0:
+            padding = torch.zeros(pad_size, dtype=torch.bool, device=obj_1_mask.device)
+            obj_1_mask = torch.cat((obj_1_mask, padding), dim=0)
+
+        # make mask 3D
+        obj_1_mask3d = obj_1_mask.view(1, obj_1_mask.shape[0], 1)
+        obj_1_mask3d = obj_1_mask3d.any(dim=0).squeeze()
+        obj_1_mask3d = obj_1_mask3d.float()[:, None, None]
+
+        gaussians_original = copy.deepcopy(gaussians)
+        
+        # Updated apply_mask function to handle mask correctly
+        gaussians_original.removal_setup(opt, obj_1_mask3d) # inverse 
+        gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
+             
+        
+        bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+        bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        # single camera or range of cameras
+        # viewpoint_stack = scene.getTrainCameras().copy()[0:] 
+        # for i, camera in enumerate(viewpoint_stack):
+        #     render_pkg = render(camera, gaussians_original, pipe, bg)
+        #     img_path = f"renders/combined_splats/combined_splats_{i}.png"
+        #     Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
+        #                 .byte()
+        #                 .permute(1, 2, 0)
+        #                 .contiguous()
+        #                 .cpu()
+        #                 .numpy()).save(img_path)        
+
     
     print("Setup complete. Running the pipeline...")
     # select feature that we want to attack
@@ -434,7 +496,7 @@ def main(args):
             #FIXME - epsilon as param
             epsilon = 5.0
             #FIXME - alpha as param
-            alpha = 0.0025
+            alpha = 0.01
             gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
