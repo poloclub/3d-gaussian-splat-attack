@@ -311,7 +311,11 @@ def main(args):
     num_classes = dataset.num_classes
     print("Num classes: ",num_classes)
     
+    # Without groups, the perturbation will be applied to the entire scene.
+    # this is ideal scenes with a single object.
+
     if dataset.no_groups == False:
+        # assume groups are being used.
         classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
         classifier.cuda()
         classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
@@ -330,11 +334,14 @@ def main(args):
         del classifier
         torch.cuda.empty_cache()
         
-    # copy gaussians variable to new object
-    gaussians_original = copy.deepcopy(gaussians)
-    if dataset.no_groups == False:
+        # copy gaussians variable to new object
+        gaussians_original = copy.deepcopy(gaussians)
         gaussians_original.removal_setup(opt,mask3d) # inverse 
         gaussians.removal_setup(opt,~mask3d.bool())
+    
+    elif dataset.no_groups == True:
+        # copy gaussians variable to new object
+        gaussians_original = copy.deepcopy(gaussians)
     
     print("Setup complete. Running the pipeline...")
     # select feature that we want to attack
