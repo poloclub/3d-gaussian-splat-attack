@@ -87,6 +87,7 @@ def parse_args():
     parser.add_argument("--selected_obj_ids", type=int, nargs="+", required=True, help="IDs of selected objects")
     parser.add_argument("--select_thresh", type=float, default=0.5, help="Selection threshold for Gaussian group")
     parser.add_argument("--target", type=int, nargs="+", required=True, help="Target object IDs")
+    parser.add_argument("--untarget", type=int, nargs="+", required=False, help="Untarget object IDs")
     parser.add_argument("--start_cam", type=int, default=0, help="Start index for camera views")
     parser.add_argument("--end_cam", type=int, default=1, help="End index for camera views")
     parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
@@ -293,6 +294,7 @@ def main(args):
 
     selected_obj_ids = torch.tensor(args.selected_obj_ids, device=args.data_device)
     target = torch.tensor(args.target, device=args.data_device)
+    untarget = torch.tensor(args.untarget, device=args.data_device) if args.untarget is not None else None
     start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
     shift_amount = args.shift_amount
     attack_conf_thresh = args.attack_conf_thresh
@@ -361,10 +363,22 @@ def main(args):
         #     "output/bike/point_cloud_302_5.ply",
         #     "output/bike/point_cloud_109.ply",
         # ]
+        # ply_paths = [
+        #     "output/room/truck.ply",
+        #     "output/room/plain_room.ply",
+        # ]    
+        # ply_paths = [
+        #     "output/nyc_block/nyc_maserati.ply",
+        #     "output/nyc_block/nyc_block_cycles_shadow.ply",
+        # ]
         ply_paths = [
-            "output/room/truck.ply",
-            "output/room/plain_room.ply",
-        ]    
+            "output/nyc_block_2/stop_sign.ply",
+            "output/nyc_block_2/nyc_block_perpindicular.ply",
+        ]        
+        # ply_paths = [
+        #     "output/nyc_block/single_obj_point_cloud_61.ply", # attacked car
+        #      "output/room/plain_room.ply",
+        # ]                 
 
         # Combine the .ply files
         gaussians.combine_splats(ply_paths)
@@ -415,7 +429,7 @@ def main(args):
     original_features_opacity = gaussians._opacity.clone().detach().requires_grad_(True)
     original_features_rotation = gaussians._rotation.clone().detach().requires_grad_(True)    
 
-    bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+    bg_color = [1,1,1] if dataset.white_background else [0, 0, 0, 0 ]
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
 
@@ -540,7 +554,7 @@ def main(args):
                     success = save_adv_image_preds(
                         model, dt2_config, input=rendered_img_input,
                         instance_mask_thresh=attack_conf_thresh,
-                        target=target, untarget=None, is_targeted=True,
+                        target=target, untarget=untarget, is_targeted=True,
                         path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
                     )
                     successes.append(success)
@@ -568,16 +582,20 @@ def main(args):
                 success = save_adv_image_preds(
                     model, dt2_config, input=rendered_img_input,
                     instance_mask_thresh=attack_conf_thresh,
-                    target=target, untarget=None, is_targeted=True,
+                    target=target, untarget=untarget, is_targeted=True,
                     path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png')
                 )
                 if not batch_mode and success:
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
+                    # print('saving gaussians')
+                    # combined_gaussians.save_ply(os.path.join("output/nyc_block", f"combined_point_cloud_{it}.ply"))                        
+                    # gaussians.save_ply(os.path.join("output/nyc_block", f"single_obj_point_cloud_{it}.ply"))
                     if len(viewpoint_stack) == 0:
                         print ("All camera viewpoints attacked successfully")
-                        print("saving gaussians")
-                        combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
+                        # print("saving gaussians")
+                        # FIXME - hardcoded directory
+                        # combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
                         break
                 print(f"Success: {success}")
         del combined_gaussians
