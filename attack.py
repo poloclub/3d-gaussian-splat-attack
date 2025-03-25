@@ -41,11 +41,11 @@ def parse_args():
     parser.add_argument("--data_device", type=str, default="cuda", help="Device to use for data processing")
     parser.add_argument("--device", type=str, default="cuda", help="Device to use for computation")
     parser.add_argument("--eval", action="store_true", help="Set evaluation mode")
-    parser.add_argument("--images", type=str, required=True, help="Path to images directory")
+    parser.add_argument("--images", type=str, default="images", help="Path to images directory")
     parser.add_argument("--model_path", type=str, required=True, help="Path to model")
     parser.add_argument("--n_views", type=int, default=100, help="Number of views")
     parser.add_argument("--num_classes", type=int, default=256, help="Number of classes")
-    parser.add_argument("--object_path", type=str, required=True, help="Path to object masks")
+    parser.add_argument("--object_path", type=str, default="object_mask", help="Path to object masks")
     parser.add_argument("--random_init", action="store_true", help="Enable random initialization")
     parser.add_argument("--resolution", type=int, default=1, help="Resolution factor")
     parser.add_argument("--sh_degree", type=int, default=3, help="Spherical harmonics degree")
@@ -84,6 +84,10 @@ def parse_args():
     parser.add_argument("--debug", action="store_true", help="Enable debugging mode")
 
     # Attack options
+    parser.add_argument("--epsilon", type=float, default=5.0, help="Attack budget for adversarial perturbations")
+    parser.add_argument("--alpha", type=float, default=0.5, help="Step size (learning rate) for adversarial update")
+    parser.add_argument("--combine_splats_paths", type=str, nargs="+", required=False,
+                    help="List of .ply paths to combine. First is the adversarial target, second is background.")
     parser.add_argument("--selected_obj_ids", type=int, nargs="+", required=True, help="IDs of selected objects")
     parser.add_argument("--select_thresh", type=float, default=0.5, help="Selection threshold for Gaussian group")
     parser.add_argument("--target", type=int, nargs="+", required=True, help="Target object IDs")
@@ -272,7 +276,6 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
         # gaussians._features_rest.clamp_(0, 1)
         # gaussians._features_dc.clamp_(0, 1)
 
- 
 
 def main(args):
     # Initialize dataset parameters
@@ -396,6 +399,9 @@ def main(args):
         gaussians.training_setup(opt)
         scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
+        ply_paths = args.combine_splats_paths
+        if ply_paths is None or len(ply_paths) < 2:
+            raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
         # ply_paths = [
         #     "output/bike/point_cloud_302_5.ply",
         #     "output/bike/point_cloud_109.ply",
@@ -404,14 +410,10 @@ def main(args):
         #     "output/room/truck.ply",
         #     "output/room/plain_room.ply",
         # ]    
-        ply_paths = [
-            "output/nyc_block/nyc_maserati.ply",
-            "output/nyc_block/nyc_block_cycles_shadow.ply",
-        ]
         # ply_paths = [
-        #     "output/nyc_block_2/stop_sign.ply",
-        #     "output/nyc_block_2/nyc_block_perpindicular.ply",
-        # ]        
+        #     "output/nyc_block/nyc_maserati.ply",
+        #     "output/nyc_block/nyc_block_cycles_shadow.ply",
+        # ]      
         # ply_paths = [
         #     "output/nyc_block/single_obj_point_cloud_61.ply", # attacked car
         #      "output/room/plain_room.ply",
@@ -544,10 +546,8 @@ def main(args):
         loss.backward(retain_graph=True)
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
-            #FIXME - epsilon as param
-            epsilon = 5.0 # 5.0
-            #FIXME - alpha as param
-            alpha = 0.01
+            epsilon = args.epsilon
+            alpha = args.alpha
             gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
