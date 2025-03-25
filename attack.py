@@ -207,6 +207,43 @@ def gaussian_color_linf_attack(gaussian, alpha, epsilon, features_rest, features
         gaussian._features_rest.sub_(features_rest).clamp_(-epsilon, epsilon).add_(features_rest)
         gaussian._features_dc.sub_(features_dc).clamp_(-epsilon, epsilon).add_(features_dc)
 
+def gaussian_color_l2_attack(gaussian, alpha, epsilon, features_rest, features_dc):
+    with torch.no_grad():
+        # Compute the L2 norm of the gradients
+        grad_rest = gaussian._features_rest.grad
+        grad_dc = gaussian._features_dc.grad
+
+        norm_rest = torch.norm(grad_rest.view(-1), p=2)
+        norm_dc = torch.norm(grad_dc.view(-1), p=2)
+
+        # Avoid division by zero
+        if norm_rest > 0:
+            f_rest_eta = alpha * (grad_rest / norm_rest)
+        else:
+            f_rest_eta = torch.zeros_like(grad_rest)
+
+        if norm_dc > 0:
+            f_dc_eta = alpha * (grad_dc / norm_dc)
+        else:
+            f_dc_eta = torch.zeros_like(grad_dc)
+
+        # Targeted attack adjustment
+        f_rest_eta.mul_(-1)
+        f_dc_eta.mul_(-1)
+
+        # Apply the perturbations
+        gaussian._features_rest.add_(f_rest_eta)
+        gaussian._features_dc.add_(f_dc_eta)
+
+        # Clamp the values within the L2 ball
+        delta_rest = gaussian._features_rest - features_rest
+        delta_rest = delta_rest.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._features_rest.copy_(features_rest + delta_rest)
+
+        delta_dc = gaussian._features_dc - features_dc
+        delta_dc = delta_dc.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._features_dc.copy_(features_dc + delta_dc)
+
 
 def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
     with torch.no_grad():
@@ -367,14 +404,14 @@ def main(args):
         #     "output/room/truck.ply",
         #     "output/room/plain_room.ply",
         # ]    
-        # ply_paths = [
-        #     "output/nyc_block/nyc_maserati.ply",
-        #     "output/nyc_block/nyc_block_cycles_shadow.ply",
-        # ]
         ply_paths = [
-            "output/nyc_block_2/stop_sign.ply",
-            "output/nyc_block_2/nyc_block_perpindicular.ply",
-        ]        
+            "output/nyc_block/nyc_maserati.ply",
+            "output/nyc_block/nyc_block_cycles_shadow.ply",
+        ]
+        # ply_paths = [
+        #     "output/nyc_block_2/stop_sign.ply",
+        #     "output/nyc_block_2/nyc_block_perpindicular.ply",
+        # ]        
         # ply_paths = [
         #     "output/nyc_block/single_obj_point_cloud_61.ply", # attacked car
         #      "output/room/plain_room.ply",
@@ -508,10 +545,11 @@ def main(args):
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             #FIXME - epsilon as param
-            epsilon = 5.0
+            epsilon = 5.0 # 5.0
             #FIXME - alpha as param
             alpha = 0.01
-            gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
             # gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
@@ -601,7 +639,6 @@ def main(args):
         del combined_gaussians
         gaussians.optimizer.zero_grad(set_to_none=True)
         model.zero_grad()
-
 
 if __name__ == "__main__":
     args = parse_args()
