@@ -41,11 +41,11 @@ def parse_args():
     parser.add_argument("--data_device", type=str, default="cuda", help="Device to use for data processing")
     parser.add_argument("--device", type=str, default="cuda", help="Device to use for computation")
     parser.add_argument("--eval", action="store_true", help="Set evaluation mode")
-    parser.add_argument("--images", type=str, required=True, help="Path to images directory")
+    parser.add_argument("--images", type=str, default="images", help="Path to images directory")
     parser.add_argument("--model_path", type=str, required=True, help="Path to model")
     parser.add_argument("--n_views", type=int, default=100, help="Number of views")
     parser.add_argument("--num_classes", type=int, default=256, help="Number of classes")
-    parser.add_argument("--object_path", type=str, required=True, help="Path to object masks")
+    parser.add_argument("--object_path", type=str, default="object_mask", help="Path to object masks")
     parser.add_argument("--random_init", action="store_true", help="Enable random initialization")
     parser.add_argument("--resolution", type=int, default=1, help="Resolution factor")
     parser.add_argument("--sh_degree", type=int, default=3, help="Spherical harmonics degree")
@@ -53,6 +53,7 @@ def parse_args():
     parser.add_argument("--train_split", action="store_true", help="Use train split")
     parser.add_argument("--white_background", action="store_true", help="Use white background")
     parser.add_argument("--no-groups", action="store_true", help="Model without Gaussian groups")
+    parser.add_argument("--combine_splats", action="store_true", help="Combine splats")
 
     # Optimization parameters
     parser.add_argument("--densification_interval", type=int, default=100, help="Interval for densification")
@@ -83,9 +84,14 @@ def parse_args():
     parser.add_argument("--debug", action="store_true", help="Enable debugging mode")
 
     # Attack options
+    parser.add_argument("--epsilon", type=float, default=5.0, help="Attack budget for adversarial perturbations")
+    parser.add_argument("--alpha", type=float, default=0.5, help="Step size (learning rate) for adversarial update")
+    parser.add_argument("--combine_splats_paths", type=str, nargs="+", required=False,
+                    help="List of .ply paths to combine. First is the adversarial target, second is background.")
     parser.add_argument("--selected_obj_ids", type=int, nargs="+", required=True, help="IDs of selected objects")
     parser.add_argument("--select_thresh", type=float, default=0.5, help="Selection threshold for Gaussian group")
     parser.add_argument("--target", type=int, nargs="+", required=True, help="Target object IDs")
+    parser.add_argument("--untarget", type=int, nargs="+", required=False, help="Untarget object IDs")
     parser.add_argument("--start_cam", type=int, default=0, help="Start index for camera views")
     parser.add_argument("--end_cam", type=int, default=1, help="End index for camera views")
     parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
@@ -96,69 +102,7 @@ def parse_args():
 
     return parser.parse_args()
 
-
-# sys.path.append("submodules/gaussian-splatting")
-#from scene import Scene, GaussianModel
-# dataset = GroupParams()
-# dataset.data_device = 'cuda'
-# dataset.eval = False
-# dataset.images = 'images'
-# # dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
-# dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/living_room"
-# dataset.n_views = 100
-# dataset.num_classes = 256
-# dataset.object_path = 'object_mask'
-# dataset.random_init = False
-# dataset.resolution = 1
-# dataset.sh_degree = 3
-# # dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
-# dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/living_room"
-# dataset.train_split = False
-# dataset.white_background = False
-
-# opt = GroupParams()
-# opt.densification_interval = 100
-# opt.density_From_iter = 500
-# opt.densify_grad_threshold = 0.0002
-# opt.density_until_iter = 15000
-# opt.feature_lr = 0.0025
-# opt.iterations = 30000
-# opt.lambda_dssim = 0.2
-# opt.opacity_lr = 0.05
-# opt.opacity_reset_interval = 3000
-# opt.percent_dense = 0.01
-# opt.position_lr_delay_mult = 0.01
-# opt.position_lr_final = 1.6e-06
-# opt.position_lr_init = 0.00016
-# opt.position_lr_max_steps = 30000
-# opt.reg3d_interval = 2
-# opt.reg3d_k = 5
-# opt.reg3d_lambda_val = 2
-# opt.reg3d_max_points = 300000
-# opt.reg3d_sample_size = 1000
-# #opt.random_background = False
-# opt.rotation_lr = 0.001
-# opt.scaling_lr = 0.005
-
-# pipe = GroupParams()
-# pipe.compute_cov3D_python = False
-# pipe.convert_SHs_python = False
-# pipe.debug = False
-
-
-# attack options:
-# modify the object iD to select another item in the scene.
-# obj 175 is the road sign in the neighborhood scene
-# obj 221 is one of the trucks
-# selected_obj_ids = torch.tensor([35], device='cuda')
 select_thresh = 0.5 # selected threshold for the gaussian group
-# target = torch.tensor([19]) 
-# cam_idx = 49
-# start_cam = 0
-# end_cam = 1
-# create sequence of cameras with nearby views
-# add_cams = 1
-# shift_amount = 0.15  # Adjust this value based on how far you want to shift
 
 def gaussian_position_linf_attack(gaussian, alpha, epsilon, features_xyz):
     with torch.no_grad():
@@ -205,6 +149,43 @@ def gaussian_color_linf_attack(gaussian, alpha, epsilon, features_rest, features
         gaussian._features_rest.sub_(features_rest).clamp_(-epsilon, epsilon).add_(features_rest)
         gaussian._features_dc.sub_(features_dc).clamp_(-epsilon, epsilon).add_(features_dc)
 
+def gaussian_color_l2_attack(gaussian, alpha, epsilon, features_rest, features_dc):
+    with torch.no_grad():
+        # Compute the L2 norm of the gradients
+        grad_rest = gaussian._features_rest.grad
+        grad_dc = gaussian._features_dc.grad
+
+        norm_rest = torch.norm(grad_rest.view(-1), p=2)
+        norm_dc = torch.norm(grad_dc.view(-1), p=2)
+
+        # Avoid division by zero
+        if norm_rest > 0:
+            f_rest_eta = alpha * (grad_rest / norm_rest)
+        else:
+            f_rest_eta = torch.zeros_like(grad_rest)
+
+        if norm_dc > 0:
+            f_dc_eta = alpha * (grad_dc / norm_dc)
+        else:
+            f_dc_eta = torch.zeros_like(grad_dc)
+
+        # Targeted attack adjustment
+        f_rest_eta.mul_(-1)
+        f_dc_eta.mul_(-1)
+
+        # Apply the perturbations
+        gaussian._features_rest.add_(f_rest_eta)
+        gaussian._features_dc.add_(f_dc_eta)
+
+        # Clamp the values within the L2 ball
+        delta_rest = gaussian._features_rest - features_rest
+        delta_rest = delta_rest.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._features_rest.copy_(features_rest + delta_rest)
+
+        delta_dc = gaussian._features_dc - features_dc
+        delta_dc = delta_dc.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._features_dc.copy_(features_dc + delta_dc)
+
 
 def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
     with torch.no_grad():
@@ -213,7 +194,7 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
         f_rest_eta = alpha * torch.sign(gaussians._features_rest.grad)
         f_dc_eta = alpha * torch.sign(gaussians._features_dc.grad)
 
-        # Perform the adversarial update
+        # Perform adversarial update
         f_rest_eta.mul_(-1)  # Targeted attack adjustment
         f_dc_eta.mul_(-1)
 
@@ -233,7 +214,6 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
         # gaussians._features_rest.clamp_(0, 1)
         # gaussians._features_dc.clamp_(0, 1)
 
- 
 
 def main(args):
     # Initialize dataset parameters
@@ -254,6 +234,7 @@ def main(args):
     dataset.device = args.device
     dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
     dataset.no_groups = args.no_groups
+    dataset.combine_splats = args.combine_splats
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -291,6 +272,7 @@ def main(args):
 
     selected_obj_ids = torch.tensor(args.selected_obj_ids, device=args.data_device)
     target = torch.tensor(args.target, device=args.data_device)
+    untarget = torch.tensor(args.untarget, device=args.data_device) if args.untarget is not None else None
     start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
     shift_amount = args.shift_amount
     attack_conf_thresh = args.attack_conf_thresh
@@ -304,18 +286,21 @@ def main(args):
     # detectron2 
     model, dt2_config = detectron2_model(device=args.device)
     
-    # Load Gaussian Splat model
-    gaussians = GaussianModel(dataset.sh_degree)
-    gaussians.training_setup(opt)
-    scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
-    num_classes = dataset.num_classes
-    print("Num classes: ",num_classes)
     
-    if dataset.no_groups == False:
+    if dataset.no_groups == False and dataset.combine_splats == False:
+        # Load Gaussian Splat model
+        gaussians = GaussianModel(dataset.sh_degree)
+        gaussians.training_setup(opt)
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        num_classes = dataset.num_classes
+        print("Num classes: ",num_classes)     
+
+        # assume groups are being used. The classifier is a pretrained model from 3DGS grouping training
+        # that predicts the segmentations / groups within the scene
         classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
         classifier.cuda()
         classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"),map_location=DEVICE))
-
+ 
         with torch.no_grad():
             logits3d = classifier(gaussians._objects_dc.permute(2,0,1))
             prob_obj3d = torch.softmax(logits3d, dim=0)
@@ -330,11 +315,86 @@ def main(args):
         del classifier
         torch.cuda.empty_cache()
         
-    # copy gaussians variable to new object
-    gaussians_original = copy.deepcopy(gaussians)
-    if dataset.no_groups == False:
+        # copy gaussians variable to new object
+        gaussians_original = copy.deepcopy(gaussians)
         gaussians_original.removal_setup(opt,mask3d) # inverse 
         gaussians.removal_setup(opt,~mask3d.bool())
+    
+    elif dataset.no_groups == True and dataset.combine_splats == False:
+        # Without groups, the perturbation will be applied to the entire scene.
+        # this is ideal scenes with a single object.
+        # Load Gaussian Splat model
+        gaussians = GaussianModel(dataset.sh_degree)
+        gaussians.training_setup(opt)
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        num_classes = dataset.num_classes
+        print("Num classes: ",num_classes)
+        # copy gaussians variable to new object
+        gaussians_original = copy.deepcopy(gaussians)
+
+    elif dataset.combine_splats == True:
+        gaussians = GaussianModel(dataset.sh_degree)
+        gaussians.training_setup(opt)
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        # List of .ply file paths to be combined
+        ply_paths = args.combine_splats_paths
+        if ply_paths is None or len(ply_paths) < 2:
+            raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
+        # ply_paths = [
+        #     "output/bike/point_cloud_302_5.ply",
+        #     "output/bike/point_cloud_109.ply",
+        # ]
+        # ply_paths = [
+        #     "output/room/truck.ply",
+        #     "output/room/plain_room.ply",
+        # ]    
+        # ply_paths = [
+        #     "output/nyc_block/nyc_maserati.ply",
+        #     "output/nyc_block/nyc_block_cycles_shadow.ply",
+        # ]      
+        # ply_paths = [
+        #     "output/nyc_block/single_obj_point_cloud_61.ply", # attacked car
+        #      "output/room/plain_room.ply",
+        # ]                 
+
+        # Combine the .ply files
+        gaussians.combine_splats(ply_paths)
+        # Demonstrate how to extract obj_1 and obj_2 using self.masks
+        obj_1_mask = gaussians.masks[0]
+        obj_2_mask = gaussians.masks[1]
+
+        # Pad obj_1_mask with the shape of obj_2_mask
+        pad_size = obj_2_mask.shape[0]
+        if pad_size > 0:
+            padding = torch.zeros(pad_size, dtype=torch.bool, device=obj_1_mask.device)
+            obj_1_mask = torch.cat((obj_1_mask, padding), dim=0)
+
+        # make mask 3D
+        obj_1_mask3d = obj_1_mask.view(1, obj_1_mask.shape[0], 1)
+        obj_1_mask3d = obj_1_mask3d.any(dim=0).squeeze()
+        obj_1_mask3d = obj_1_mask3d.float()[:, None, None]
+
+        gaussians_original = copy.deepcopy(gaussians)
+        
+        # Updated apply_mask function to handle mask correctly
+        gaussians_original.removal_setup(opt, obj_1_mask3d) # inverse 
+        gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
+             
+        
+        bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+        bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        # single camera or range of cameras
+        # viewpoint_stack = scene.getTrainCameras().copy()[0:] 
+        # for i, camera in enumerate(viewpoint_stack):
+        #     render_pkg = render(camera, gaussians_original, pipe, bg)
+        #     img_path = f"renders/combined_splats/combined_splats_{i}.png"
+        #     Image.fromarray((torch.clamp(render_pkg["render"], min=0, max=1.0) * 255)
+        #                 .byte()
+        #                 .permute(1, 2, 0)
+        #                 .contiguous()
+        #                 .cpu()
+        #                 .numpy()).save(img_path)        
+
     
     print("Setup complete. Running the pipeline...")
     # select feature that we want to attack
@@ -346,7 +406,7 @@ def main(args):
     original_features_opacity = gaussians._opacity.clone().detach().requires_grad_(True)
     original_features_rotation = gaussians._rotation.clone().detach().requires_grad_(True)    
 
-    bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+    bg_color = [1,1,1] if dataset.white_background else [0, 0, 0, 0 ]
     bg = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
 
@@ -424,16 +484,15 @@ def main(args):
         loss.backward(retain_graph=True)
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
-            #FIXME - epsilon as param
-            epsilon = 5.0
-            #FIXME - alpha as param
-            alpha = 0.0025
-            gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            epsilon = args.epsilon
+            alpha = args.alpha
+            gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            # Uncomment the following lines to apply different attacks
+            # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
             # gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
             # gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
-
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
             combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
@@ -471,7 +530,7 @@ def main(args):
                     success = save_adv_image_preds(
                         model, dt2_config, input=rendered_img_input,
                         instance_mask_thresh=attack_conf_thresh,
-                        target=target, untarget=None, is_targeted=True,
+                        target=target, untarget=untarget, is_targeted=True,
                         path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
                     )
                     successes.append(success)
@@ -481,9 +540,9 @@ def main(args):
                     print ("All camera viewpoints attacked successfully")
                     break
                 #FIXME - add as param
-                if num_successes >= 3:
+                if num_successes >= 1:
                     print("saving gaussians")
-                    combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))
+                    combined_gaussians.save_ply(os.path.join("output/industrial_park", f"point_cloud_{it}.ply"))
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
@@ -499,22 +558,25 @@ def main(args):
                 success = save_adv_image_preds(
                     model, dt2_config, input=rendered_img_input,
                     instance_mask_thresh=attack_conf_thresh,
-                    target=target, untarget=None, is_targeted=True,
+                    target=target, untarget=untarget, is_targeted=True,
                     path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png')
                 )
                 if not batch_mode and success:
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
+                    # print('saving gaussians')
+                    # combined_gaussians.save_ply(os.path.join("output/nyc_block", f"combined_point_cloud_{it}.ply"))                        
+                    # gaussians.save_ply(os.path.join("output/nyc_block", f"single_obj_point_cloud_{it}.ply"))
                     if len(viewpoint_stack) == 0:
                         print ("All camera viewpoints attacked successfully")
-                        print("saving gaussians")
-                        combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
+                        # print("saving gaussians")
+                        # FIXME - hardcoded directory
+                        # combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
                         break
                 print(f"Success: {success}")
         del combined_gaussians
         gaussians.optimizer.zero_grad(set_to_none=True)
         model.zero_grad()
-
 
 if __name__ == "__main__":
     args = parse_args()

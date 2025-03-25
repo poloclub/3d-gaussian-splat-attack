@@ -98,8 +98,16 @@ def save_adv_image_preds(model \
     model = model_train_mode(model)
     
     PIL.Image.fromarray(pred).save(path)
-    if is_targeted and target_pred_exists:
-        return True
+    # if is_targeted and target_pred_exists:
+    #     return True
+    # elif is_targeted and untarget_pred_not_exists:
+    #     return True
+    if is_targeted:
+        if target_pred_exists and untarget is None:
+            return True
+        elif target_pred_exists and untarget is not None:
+            if untarget_pred_not_exists:
+                return True
     elif (not is_targeted) and (untarget_pred_not_exists):
         return True
     return False
