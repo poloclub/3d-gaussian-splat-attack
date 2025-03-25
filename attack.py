@@ -102,69 +102,7 @@ def parse_args():
 
     return parser.parse_args()
 
-
-# sys.path.append("submodules/gaussian-splatting")
-#from scene import Scene, GaussianModel
-# dataset = GroupParams()
-# dataset.data_device = 'cuda'
-# dataset.eval = False
-# dataset.images = 'images'
-# # dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/road_sign"
-# dataset.model_path = f"/raid/mhull32/gaussian-grouping/output/living_room"
-# dataset.n_views = 100
-# dataset.num_classes = 256
-# dataset.object_path = 'object_mask'
-# dataset.random_init = False
-# dataset.resolution = 1
-# dataset.sh_degree = 3
-# # dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/road_sign"
-# dataset.source_path = f"/raid/mhull32/gaussian-grouping/data/living_room"
-# dataset.train_split = False
-# dataset.white_background = False
-
-# opt = GroupParams()
-# opt.densification_interval = 100
-# opt.density_From_iter = 500
-# opt.densify_grad_threshold = 0.0002
-# opt.density_until_iter = 15000
-# opt.feature_lr = 0.0025
-# opt.iterations = 30000
-# opt.lambda_dssim = 0.2
-# opt.opacity_lr = 0.05
-# opt.opacity_reset_interval = 3000
-# opt.percent_dense = 0.01
-# opt.position_lr_delay_mult = 0.01
-# opt.position_lr_final = 1.6e-06
-# opt.position_lr_init = 0.00016
-# opt.position_lr_max_steps = 30000
-# opt.reg3d_interval = 2
-# opt.reg3d_k = 5
-# opt.reg3d_lambda_val = 2
-# opt.reg3d_max_points = 300000
-# opt.reg3d_sample_size = 1000
-# #opt.random_background = False
-# opt.rotation_lr = 0.001
-# opt.scaling_lr = 0.005
-
-# pipe = GroupParams()
-# pipe.compute_cov3D_python = False
-# pipe.convert_SHs_python = False
-# pipe.debug = False
-
-
-# attack options:
-# modify the object iD to select another item in the scene.
-# obj 175 is the road sign in the neighborhood scene
-# obj 221 is one of the trucks
-# selected_obj_ids = torch.tensor([35], device='cuda')
 select_thresh = 0.5 # selected threshold for the gaussian group
-# target = torch.tensor([19]) 
-# cam_idx = 49
-# start_cam = 0
-# end_cam = 1
-# create sequence of cameras with nearby views
-# add_cams = 1
-# shift_amount = 0.15  # Adjust this value based on how far you want to shift
 
 def gaussian_position_linf_attack(gaussian, alpha, epsilon, features_xyz):
     with torch.no_grad():
@@ -256,7 +194,7 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
         f_rest_eta = alpha * torch.sign(gaussians._features_rest.grad)
         f_dc_eta = alpha * torch.sign(gaussians._features_dc.grad)
 
-        # Perform the adversarial update
+        # Perform adversarial update
         f_rest_eta.mul_(-1)  # Targeted attack adjustment
         f_dc_eta.mul_(-1)
 
@@ -549,12 +487,12 @@ def main(args):
             epsilon = args.epsilon
             alpha = args.alpha
             gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            # Uncomment the following lines to apply different attacks
             # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon, original_features_scaling)
             # gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
             # gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
-
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
             combined_gaussians = copy.deepcopy(gaussians)
             combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
