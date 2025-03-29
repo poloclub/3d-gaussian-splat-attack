@@ -449,6 +449,28 @@
                 "--select_thresh", "0.5",
                 "--train_split"
             ]
-        }       
+        }, {
+            "name": "Attack Maserati",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "attack.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},      
+            "args": [
+                "scene=maserati"
+            ]            
+        }, {
+            "name": "Attack Stop Sign",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "attack.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},      
+            "args": [
+                "scene=stop_sign"
+            ]            
+        },
     ]
 }

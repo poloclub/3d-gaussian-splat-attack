@@ -3,6 +3,8 @@ import numpy as np
 import sys
 import argparse
 import os
+import hydra
+from omegaconf import DictConfig, OmegaConf
 from random import randint
 from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
 from scene import Scene, GaussianModel
@@ -32,75 +34,6 @@ from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 from edit_object_removal import points_inside_convex_hull
 from PIL import Image, ImageDraw
 from tqdm import tqdm
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Refactor Gaussian Adversarial Attack Script")
-
-    # Dataset parameters
-    parser.add_argument("--data_device", type=str, default="cuda", help="Device to use for data processing")
-    parser.add_argument("--device", type=str, default="cuda", help="Device to use for computation")
-    parser.add_argument("--eval", action="store_true", help="Set evaluation mode")
-    parser.add_argument("--images", type=str, default="images", help="Path to images directory")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to model")
-    parser.add_argument("--n_views", type=int, default=100, help="Number of views")
-    parser.add_argument("--num_classes", type=int, default=256, help="Number of classes")
-    parser.add_argument("--object_path", type=str, default="object_mask", help="Path to object masks")
-    parser.add_argument("--random_init", action="store_true", help="Enable random initialization")
-    parser.add_argument("--resolution", type=int, default=1, help="Resolution factor")
-    parser.add_argument("--sh_degree", type=int, default=3, help="Spherical harmonics degree")
-    parser.add_argument("--source_path", type=str, required=True, help="Path to data source")
-    parser.add_argument("--train_split", action="store_true", help="Use train split")
-    parser.add_argument("--white_background", action="store_true", help="Use white background")
-    parser.add_argument("--no-groups", action="store_true", help="Model without Gaussian groups")
-    parser.add_argument("--combine_splats", action="store_true", help="Combine splats")
-
-    # Optimization parameters
-    parser.add_argument("--densification_interval", type=int, default=100, help="Interval for densification")
-    parser.add_argument("--density_From_iter", type=int, default=500, help="Starting iteration for density")
-    parser.add_argument("--densify_grad_threshold", type=float, default=0.0002, help="Densify gradient threshold")
-    parser.add_argument("--density_until_iter", type=int, default=15000, help="Density until iteration")
-    parser.add_argument("--feature_lr", type=float, default=0.0025, help="Feature learning rate")
-    parser.add_argument("--iterations", type=int, default=30000, help="Number of optimization iterations")
-    parser.add_argument("--lambda_dssim", type=float, default=0.2, help="Lambda for DSSIM loss")
-    parser.add_argument("--opacity_lr", type=float, default=0.05, help="Learning rate for opacity")
-    parser.add_argument("--opacity_reset_interval", type=int, default=3000, help="Interval to reset opacity")
-    parser.add_argument("--percent_dense", type=float, default=0.01, help="Percent density")
-    parser.add_argument("--position_lr_delay_mult", type=float, default=0.01, help="Position learning rate delay multiplier")
-    parser.add_argument("--position_lr_final", type=float, default=1.6e-6, help="Final position learning rate")
-    parser.add_argument("--position_lr_init", type=float, default=0.00016, help="Initial position learning rate")
-    parser.add_argument("--position_lr_max_steps", type=int, default=30000, help="Max steps for position learning rate")
-    parser.add_argument("--reg3d_interval", type=int, default=2, help="Interval for 3D regularization")
-    parser.add_argument("--reg3d_k", type=int, default=5, help="K value for 3D regularization")
-    parser.add_argument("--reg3d_lambda_val", type=int, default=2, help="Lambda value for 3D regularization")
-    parser.add_argument("--reg3d_max_points", type=int, default=300000, help="Max points for 3D regularization")
-    parser.add_argument("--reg3d_sample_size", type=int, default=1000, help="Sample size for 3D regularization")
-    parser.add_argument("--rotation_lr", type=float, default=0.001, help="Rotation learning rate")
-    parser.add_argument("--scaling_lr", type=float, default=0.005, help="Scaling learning rate")
-
-    # Pipeline parameters
-    parser.add_argument("--compute_cov3D_python", action="store_true", help="Enable computation of covariance in Python")
-    parser.add_argument("--convert_SHs_python", action="store_true", help="Enable SH conversion in Python")
-    parser.add_argument("--debug", action="store_true", help="Enable debugging mode")
-
-    # Attack options
-    parser.add_argument("--epsilon", type=float, default=5.0, help="Attack budget for adversarial perturbations")
-    parser.add_argument("--alpha", type=float, default=0.5, help="Step size (learning rate) for adversarial update")
-    parser.add_argument("--combine_splats_paths", type=str, nargs="+", required=False,
-                    help="List of .ply paths to combine. First is the adversarial target, second is background.")
-    parser.add_argument("--selected_obj_ids", type=int, nargs="+", required=True, help="IDs of selected objects")
-    parser.add_argument("--select_thresh", type=float, default=0.5, help="Selection threshold for Gaussian group")
-    parser.add_argument("--target", type=int, nargs="+", required=True, help="Target object IDs")
-    parser.add_argument("--untarget", type=int, nargs="+", required=False, help="Untarget object IDs")
-    parser.add_argument("--start_cam", type=int, default=0, help="Start index for camera views")
-    parser.add_argument("--end_cam", type=int, default=1, help="End index for camera views")
-    parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
-    parser.add_argument("--shift_amount", type=float, default=0.15, help="Shift amount for additional cameras")
-    parser.add_argument("--attack_conf_thresh", type=float, default=0.7, help="Confidence threshold for attack")
-    parser.add_argument("--batch_mode", action="store_true", help="Enable batch mode")
-    parser.add_argument("--cam_indices", type=int, nargs="+", required=False, help="Select specific cameras")
-
-    return parser.parse_args()
 
 select_thresh = 0.5 # selected threshold for the gaussian group
 
@@ -215,50 +148,53 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
         # gaussians._features_dc.clamp_(0, 1)
 
 
-def main(args):
+# def main(args):
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def run(cfg : DictConfig) -> None:
+    print(OmegaConf.to_yaml(cfg))    
     # Initialize dataset parameters
     dataset = GroupParams()
-    dataset.data_device = args.data_device
-    dataset.eval = args.eval
-    dataset.images = args.images
-    dataset.model_path = args.model_path
-    dataset.n_views = args.n_views
-    dataset.num_classes = args.num_classes
-    dataset.object_path = args.object_path
-    dataset.random_init = args.random_init
-    dataset.resolution = args.resolution
-    dataset.sh_degree = args.sh_degree
-    dataset.source_path = args.source_path
-    dataset.train_split = args.train_split
-    dataset.white_background = args.white_background
-    dataset.device = args.device
-    dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
-    dataset.no_groups = args.no_groups
-    dataset.combine_splats = args.combine_splats
+    dataset.data_device = cfg.data_device
+    dataset.eval = cfg.eval
+    dataset.images = cfg.images
+    dataset.model_path = cfg.scene.model_path
+    dataset.source_path = cfg.scene.source_path
+    dataset.combine_splats = cfg.combine_splats
+    dataset.cam_indices = cfg.scene.cam_indices  # select specific cameras instead of loading all of them.
+    dataset.n_views = cfg.n_views
+    dataset.num_classes = cfg.num_classes
+    dataset.object_path = cfg.object_path
+    dataset.random_init = cfg.random_init
+    dataset.resolution = cfg.resolution
+    dataset.sh_degree = cfg.sh_degree
+    dataset.train_split = cfg.train_split
+    dataset.white_background = cfg.white_background
+    dataset.device = cfg.device
+    dataset.no_groups = cfg.no_groups
 
     # Initialize optimization parameters
     opt = GroupParams()
-    opt.densification_interval = args.densification_interval
-    opt.density_From_iter = args.density_From_iter
-    opt.densify_grad_threshold = args.densify_grad_threshold
-    opt.density_until_iter = args.density_until_iter
-    opt.feature_lr = args.feature_lr
-    opt.iterations = args.iterations
-    opt.lambda_dssim = args.lambda_dssim
-    opt.opacity_lr = args.opacity_lr
-    opt.opacity_reset_interval = args.opacity_reset_interval
-    opt.percent_dense = args.percent_dense
-    opt.position_lr_delay_mult = args.position_lr_delay_mult
-    opt.position_lr_final = args.position_lr_final
-    opt.position_lr_init = args.position_lr_init
-    opt.position_lr_max_steps = args.position_lr_max_steps
-    opt.reg3d_interval = args.reg3d_interval
-    opt.reg3d_k = args.reg3d_k
-    opt.reg3d_lambda_val = args.reg3d_lambda_val
-    opt.reg3d_max_points = args.reg3d_max_points
-    opt.reg3d_sample_size = args.reg3d_sample_size
-    opt.rotation_lr = args.rotation_lr
-    opt.scaling_lr = args.scaling_lr
+    opt.densification_interval = cfg.densification_interval
+    opt.density_From_iter = cfg.density_From_iter
+    opt.densify_grad_threshold = cfg.densify_grad_threshold
+    opt.density_until_iter = cfg.density_until_iter
+    opt.feature_lr = cfg.feature_lr
+    opt.iterations = cfg.iterations
+    opt.lambda_dssim = cfg.lambda_dssim
+    opt.opacity_lr = cfg.opacity_lr
+    opt.opacity_reset_interval = cfg.opacity_reset_interval
+    opt.percent_dense = cfg.percent_dense
+    opt.position_lr_delay_mult = cfg.position_lr_delay_mult
+    opt.position_lr_final = cfg.position_lr_final
+    opt.position_lr_init = cfg.position_lr_init
+    opt.position_lr_max_steps = cfg.position_lr_max_steps
+    opt.reg3d_interval = cfg.reg3d_interval
+    opt.reg3d_k = cfg.reg3d_k
+    opt.reg3d_lambda_val = cfg.reg3d_lambda_val
+    opt.reg3d_max_points = cfg.reg3d_max_points
+    opt.reg3d_sample_size = cfg.reg3d_sample_size
+    opt.rotation_lr = cfg.rotation_lr
+    opt.scaling_lr = cfg.scaling_lr
 
     # Pipeline parameters
     pipe = GroupParams()
@@ -266,17 +202,17 @@ def main(args):
     pipe.convert_SHs_python = False
     pipe.debug = False
     # set the cuda device to the args.device
-    DEVICE = f"cuda:{args.device}" 
+    DEVICE = f"cuda:{cfg.device}" 
     torch.cuda.set_device(DEVICE)
     # Additional attack setup
 
-    selected_obj_ids = torch.tensor(args.selected_obj_ids, device=args.data_device)
-    target = torch.tensor(args.target, device=args.data_device)
-    untarget = torch.tensor(args.untarget, device=args.data_device) if args.untarget is not None else None
-    start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
-    shift_amount = args.shift_amount
-    attack_conf_thresh = args.attack_conf_thresh
-    batch_mode = args.batch_mode  # Set this to False for single camera mode
+    selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
+    target = torch.tensor(cfg.scene.target, device=cfg.data_device)
+    untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device) if cfg.scene.untarget is not None else None
+    start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
+    shift_amount = cfg.shift_amount
+    attack_conf_thresh = cfg.attack_conf_thresh
+    batch_mode = cfg.batch_mode  # Set this to False for single camera mode
 
 
 
@@ -284,7 +220,7 @@ def main(args):
     subprocess.run(["make", "clean"], shell=True)
         
     # detectron2 
-    model, dt2_config = detectron2_model(device=args.device)
+    model, dt2_config = detectron2_model(device=cfg.device)
     
     
     if dataset.no_groups == False and dataset.combine_splats == False:
@@ -337,7 +273,7 @@ def main(args):
         gaussians.training_setup(opt)
         scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
-        ply_paths = args.combine_splats_paths
+        ply_paths = cfg.scene.combine_splats_paths
         if ply_paths is None or len(ply_paths) < 2:
             raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
         # ply_paths = [
@@ -484,8 +420,8 @@ def main(args):
         loss.backward(retain_graph=True)
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
-            epsilon = args.epsilon
-            alpha = args.alpha
+            epsilon = cfg.epsilon
+            alpha = cfg.alpha
             gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # Uncomment the following lines to apply different attacks
             # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
@@ -579,5 +515,4 @@ def main(args):
         model.zero_grad()
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    run()
