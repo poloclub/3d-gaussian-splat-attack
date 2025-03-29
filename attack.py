@@ -35,75 +35,6 @@ from edit_object_removal import points_inside_convex_hull
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Refactor Gaussian Adversarial Attack Script")
-
-    # Dataset parameters
-    parser.add_argument("--data_device", type=str, default="cuda", help="Device to use for data processing")
-    parser.add_argument("--device", type=str, default="cuda", help="Device to use for computation")
-    parser.add_argument("--eval", action="store_true", help="Set evaluation mode")
-    parser.add_argument("--images", type=str, default="images", help="Path to images directory")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to model")
-    parser.add_argument("--n_views", type=int, default=100, help="Number of views")
-    parser.add_argument("--num_classes", type=int, default=256, help="Number of classes")
-    parser.add_argument("--object_path", type=str, default="object_mask", help="Path to object masks")
-    parser.add_argument("--random_init", action="store_true", help="Enable random initialization")
-    parser.add_argument("--resolution", type=int, default=1, help="Resolution factor")
-    parser.add_argument("--sh_degree", type=int, default=3, help="Spherical harmonics degree")
-    parser.add_argument("--source_path", type=str, required=True, help="Path to data source")
-    parser.add_argument("--train_split", action="store_true", help="Use train split")
-    parser.add_argument("--white_background", action="store_true", help="Use white background")
-    parser.add_argument("--no-groups", action="store_true", help="Model without Gaussian groups")
-    parser.add_argument("--combine_splats", action="store_true", help="Combine splats")
-
-    # Optimization parameters
-    parser.add_argument("--densification_interval", type=int, default=100, help="Interval for densification")
-    parser.add_argument("--density_From_iter", type=int, default=500, help="Starting iteration for density")
-    parser.add_argument("--densify_grad_threshold", type=float, default=0.0002, help="Densify gradient threshold")
-    parser.add_argument("--density_until_iter", type=int, default=15000, help="Density until iteration")
-    parser.add_argument("--feature_lr", type=float, default=0.0025, help="Feature learning rate")
-    parser.add_argument("--iterations", type=int, default=30000, help="Number of optimization iterations")
-    parser.add_argument("--lambda_dssim", type=float, default=0.2, help="Lambda for DSSIM loss")
-    parser.add_argument("--opacity_lr", type=float, default=0.05, help="Learning rate for opacity")
-    parser.add_argument("--opacity_reset_interval", type=int, default=3000, help="Interval to reset opacity")
-    parser.add_argument("--percent_dense", type=float, default=0.01, help="Percent density")
-    parser.add_argument("--position_lr_delay_mult", type=float, default=0.01, help="Position learning rate delay multiplier")
-    parser.add_argument("--position_lr_final", type=float, default=1.6e-6, help="Final position learning rate")
-    parser.add_argument("--position_lr_init", type=float, default=0.00016, help="Initial position learning rate")
-    parser.add_argument("--position_lr_max_steps", type=int, default=30000, help="Max steps for position learning rate")
-    parser.add_argument("--reg3d_interval", type=int, default=2, help="Interval for 3D regularization")
-    parser.add_argument("--reg3d_k", type=int, default=5, help="K value for 3D regularization")
-    parser.add_argument("--reg3d_lambda_val", type=int, default=2, help="Lambda value for 3D regularization")
-    parser.add_argument("--reg3d_max_points", type=int, default=300000, help="Max points for 3D regularization")
-    parser.add_argument("--reg3d_sample_size", type=int, default=1000, help="Sample size for 3D regularization")
-    parser.add_argument("--rotation_lr", type=float, default=0.001, help="Rotation learning rate")
-    parser.add_argument("--scaling_lr", type=float, default=0.005, help="Scaling learning rate")
-
-    # Pipeline parameters
-    parser.add_argument("--compute_cov3D_python", action="store_true", help="Enable computation of covariance in Python")
-    parser.add_argument("--convert_SHs_python", action="store_true", help="Enable SH conversion in Python")
-    parser.add_argument("--debug", action="store_true", help="Enable debugging mode")
-
-    # Attack options
-    parser.add_argument("--epsilon", type=float, default=5.0, help="Attack budget for adversarial perturbations")
-    parser.add_argument("--alpha", type=float, default=0.5, help="Step size (learning rate) for adversarial update")
-    parser.add_argument("--combine_splats_paths", type=str, nargs="+", required=False,
-                    help="List of .ply paths to combine. First is the adversarial target, second is background.")
-    parser.add_argument("--selected_obj_ids", type=int, nargs="+", required=True, help="IDs of selected objects")
-    parser.add_argument("--select_thresh", type=float, default=0.5, help="Selection threshold for Gaussian group")
-    parser.add_argument("--target", type=int, nargs="+", required=True, help="Target object IDs")
-    parser.add_argument("--untarget", type=int, nargs="+", required=False, help="Untarget object IDs")
-    parser.add_argument("--start_cam", type=int, default=0, help="Start index for camera views")
-    parser.add_argument("--end_cam", type=int, default=1, help="End index for camera views")
-    parser.add_argument("--add_cams", type=int, default=1, help="Number of additional cameras")
-    parser.add_argument("--shift_amount", type=float, default=0.15, help="Shift amount for additional cameras")
-    parser.add_argument("--attack_conf_thresh", type=float, default=0.7, help="Confidence threshold for attack")
-    parser.add_argument("--batch_mode", action="store_true", help="Enable batch mode")
-    parser.add_argument("--cam_indices", type=int, nargs="+", required=False, help="Select specific cameras")
-
-    return parser.parse_args()
-
 select_thresh = 0.5 # selected threshold for the gaussian group
 
 def gaussian_position_linf_attack(gaussian, alpha, epsilon, features_xyz):
@@ -584,6 +515,4 @@ def run(cfg : DictConfig) -> None:
         model.zero_grad()
 
 if __name__ == "__main__":
-    #args = parse_args()
-    #main(args)
     run()
