@@ -449,6 +449,14 @@
                 "--select_thresh", "0.5",
                 "--train_split"
             ]
-        }       
+        }  , {
+            "name": "Hydra",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "attack.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},      
+        }
     ]
 }
