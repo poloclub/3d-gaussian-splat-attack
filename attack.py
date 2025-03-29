@@ -1,39 +1,23 @@
-import torch
-import numpy as np
 import sys
-import argparse
 import os
+import copy
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from random import randint
-from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
-from scene import Scene, GaussianModel
-from gaussian_renderer import render
-from scene.cameras import Camera  
-from arguments import GroupParams
-import subprocess
-import PIL
-from PIL import Image
-from tqdm import tqdm
-from edit_object_removal import points_inside_convex_hull
-from utils.graphics_utils import getWorld2View2, getProjectionMatrix
-import copy
-
-
-import torch
 import argparse
-import os
-import copy
+import torch
+import subprocess
+import numpy as np
+from tqdm import tqdm
+import PIL
+from PIL import Image, ImageDraw
 from random import randint
+from omegaconf import DictConfig, OmegaConf
 from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
 from scene import Scene, GaussianModel
 from gaussian_renderer import render
 from scene.cameras import Camera  
 from arguments import GroupParams
-from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 from edit_object_removal import points_inside_convex_hull
-from PIL import Image, ImageDraw
-from tqdm import tqdm
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 
 select_thresh = 0.5 # selected threshold for the gaussian group
 
