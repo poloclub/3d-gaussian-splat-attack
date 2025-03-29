@@ -226,20 +226,20 @@ def run(cfg : DictConfig) -> None:
     dataset.data_device = cfg.data_device
     dataset.eval = cfg.eval
     dataset.images = cfg.images
-    dataset.model_path = cfg.model_path
+    dataset.model_path = cfg.scene.model_path
+    dataset.source_path = cfg.scene.source_path
+    dataset.combine_splats = cfg.combine_splats
+    dataset.cam_indices = cfg.scene.cam_indices  # select specific cameras instead of loading all of them.
     dataset.n_views = cfg.n_views
     dataset.num_classes = cfg.num_classes
     dataset.object_path = cfg.object_path
     dataset.random_init = cfg.random_init
     dataset.resolution = cfg.resolution
     dataset.sh_degree = cfg.sh_degree
-    dataset.source_path = cfg.source_path
     dataset.train_split = cfg.train_split
     dataset.white_background = cfg.white_background
     dataset.device = cfg.device
-    dataset.cam_indices = cfg.cam_indices  # select specific cameras instead of loading all of them.
     dataset.no_groups = cfg.no_groups
-    dataset.combine_splats = cfg.combine_splats
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -276,8 +276,8 @@ def run(cfg : DictConfig) -> None:
     # Additional attack setup
 
     selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
-    target = torch.tensor(cfg.target, device=cfg.data_device)
-    untarget = torch.tensor(cfg.untarget, device=cfg.data_device) if cfg.untarget is not None else None
+    target = torch.tensor(cfg.scene.target, device=cfg.data_device)
+    untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device) if cfg.scene.untarget is not None else None
     start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
     shift_amount = cfg.shift_amount
     attack_conf_thresh = cfg.attack_conf_thresh
@@ -342,7 +342,7 @@ def run(cfg : DictConfig) -> None:
         gaussians.training_setup(opt)
         scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
-        ply_paths = cfg.combine_splats_paths
+        ply_paths = cfg.scene.combine_splats_paths
         if ply_paths is None or len(ply_paths) < 2:
             raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
         # ply_paths = [
