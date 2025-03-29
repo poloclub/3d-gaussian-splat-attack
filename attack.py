@@ -3,6 +3,8 @@ import numpy as np
 import sys
 import argparse
 import os
+import hydra
+from omegaconf import DictConfig, OmegaConf
 from random import randint
 from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
 from scene import Scene, GaussianModel
@@ -215,50 +217,53 @@ def gaussian_color_linf_attack_masked(gaussians, mask3d, alpha, epsilon):
         # gaussians._features_dc.clamp_(0, 1)
 
 
-def main(args):
+# def main(args):
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def run(cfg : DictConfig) -> None:
+    print(OmegaConf.to_yaml(cfg))    
     # Initialize dataset parameters
     dataset = GroupParams()
-    dataset.data_device = args.data_device
-    dataset.eval = args.eval
-    dataset.images = args.images
-    dataset.model_path = args.model_path
-    dataset.n_views = args.n_views
-    dataset.num_classes = args.num_classes
-    dataset.object_path = args.object_path
-    dataset.random_init = args.random_init
-    dataset.resolution = args.resolution
-    dataset.sh_degree = args.sh_degree
-    dataset.source_path = args.source_path
-    dataset.train_split = args.train_split
-    dataset.white_background = args.white_background
-    dataset.device = args.device
-    dataset.cam_indices = args.cam_indices # select specific cameras instead of loading all of them.
-    dataset.no_groups = args.no_groups
-    dataset.combine_splats = args.combine_splats
+    dataset.data_device = cfg.data_device
+    dataset.eval = cfg.eval
+    dataset.images = cfg.images
+    dataset.model_path = cfg.model_path
+    dataset.n_views = cfg.n_views
+    dataset.num_classes = cfg.num_classes
+    dataset.object_path = cfg.object_path
+    dataset.random_init = cfg.random_init
+    dataset.resolution = cfg.resolution
+    dataset.sh_degree = cfg.sh_degree
+    dataset.source_path = cfg.source_path
+    dataset.train_split = cfg.train_split
+    dataset.white_background = cfg.white_background
+    dataset.device = cfg.device
+    dataset.cam_indices = cfg.cam_indices  # select specific cameras instead of loading all of them.
+    dataset.no_groups = cfg.no_groups
+    dataset.combine_splats = cfg.combine_splats
 
     # Initialize optimization parameters
     opt = GroupParams()
-    opt.densification_interval = args.densification_interval
-    opt.density_From_iter = args.density_From_iter
-    opt.densify_grad_threshold = args.densify_grad_threshold
-    opt.density_until_iter = args.density_until_iter
-    opt.feature_lr = args.feature_lr
-    opt.iterations = args.iterations
-    opt.lambda_dssim = args.lambda_dssim
-    opt.opacity_lr = args.opacity_lr
-    opt.opacity_reset_interval = args.opacity_reset_interval
-    opt.percent_dense = args.percent_dense
-    opt.position_lr_delay_mult = args.position_lr_delay_mult
-    opt.position_lr_final = args.position_lr_final
-    opt.position_lr_init = args.position_lr_init
-    opt.position_lr_max_steps = args.position_lr_max_steps
-    opt.reg3d_interval = args.reg3d_interval
-    opt.reg3d_k = args.reg3d_k
-    opt.reg3d_lambda_val = args.reg3d_lambda_val
-    opt.reg3d_max_points = args.reg3d_max_points
-    opt.reg3d_sample_size = args.reg3d_sample_size
-    opt.rotation_lr = args.rotation_lr
-    opt.scaling_lr = args.scaling_lr
+    opt.densification_interval = cfg.densification_interval
+    opt.density_From_iter = cfg.density_From_iter
+    opt.densify_grad_threshold = cfg.densify_grad_threshold
+    opt.density_until_iter = cfg.density_until_iter
+    opt.feature_lr = cfg.feature_lr
+    opt.iterations = cfg.iterations
+    opt.lambda_dssim = cfg.lambda_dssim
+    opt.opacity_lr = cfg.opacity_lr
+    opt.opacity_reset_interval = cfg.opacity_reset_interval
+    opt.percent_dense = cfg.percent_dense
+    opt.position_lr_delay_mult = cfg.position_lr_delay_mult
+    opt.position_lr_final = cfg.position_lr_final
+    opt.position_lr_init = cfg.position_lr_init
+    opt.position_lr_max_steps = cfg.position_lr_max_steps
+    opt.reg3d_interval = cfg.reg3d_interval
+    opt.reg3d_k = cfg.reg3d_k
+    opt.reg3d_lambda_val = cfg.reg3d_lambda_val
+    opt.reg3d_max_points = cfg.reg3d_max_points
+    opt.reg3d_sample_size = cfg.reg3d_sample_size
+    opt.rotation_lr = cfg.rotation_lr
+    opt.scaling_lr = cfg.scaling_lr
 
     # Pipeline parameters
     pipe = GroupParams()
@@ -266,17 +271,17 @@ def main(args):
     pipe.convert_SHs_python = False
     pipe.debug = False
     # set the cuda device to the args.device
-    DEVICE = f"cuda:{args.device}" 
+    DEVICE = f"cuda:{cfg.device}" 
     torch.cuda.set_device(DEVICE)
     # Additional attack setup
 
-    selected_obj_ids = torch.tensor(args.selected_obj_ids, device=args.data_device)
-    target = torch.tensor(args.target, device=args.data_device)
-    untarget = torch.tensor(args.untarget, device=args.data_device) if args.untarget is not None else None
-    start_cam, end_cam, add_cams = args.start_cam, args.end_cam, args.add_cams
-    shift_amount = args.shift_amount
-    attack_conf_thresh = args.attack_conf_thresh
-    batch_mode = args.batch_mode  # Set this to False for single camera mode
+    selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
+    target = torch.tensor(cfg.target, device=cfg.data_device)
+    untarget = torch.tensor(cfg.untarget, device=cfg.data_device) if cfg.untarget is not None else None
+    start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
+    shift_amount = cfg.shift_amount
+    attack_conf_thresh = cfg.attack_conf_thresh
+    batch_mode = cfg.batch_mode  # Set this to False for single camera mode
 
 
 
@@ -284,7 +289,7 @@ def main(args):
     subprocess.run(["make", "clean"], shell=True)
         
     # detectron2 
-    model, dt2_config = detectron2_model(device=args.device)
+    model, dt2_config = detectron2_model(device=cfg.device)
     
     
     if dataset.no_groups == False and dataset.combine_splats == False:
@@ -337,7 +342,7 @@ def main(args):
         gaussians.training_setup(opt)
         scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
-        ply_paths = args.combine_splats_paths
+        ply_paths = cfg.combine_splats_paths
         if ply_paths is None or len(ply_paths) < 2:
             raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
         # ply_paths = [
@@ -484,8 +489,8 @@ def main(args):
         loss.backward(retain_graph=True)
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
-            epsilon = args.epsilon
-            alpha = args.alpha
+            epsilon = cfg.epsilon
+            alpha = cfg.alpha
             gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # Uncomment the following lines to apply different attacks
             # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
@@ -579,5 +584,6 @@ def main(args):
         model.zero_grad()
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    #args = parse_args()
+    #main(args)
+    run()
