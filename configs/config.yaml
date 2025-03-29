@@ -1,21 +1,21 @@
 # conf/attack.yaml
 
 data_device: "cuda"
-device: "cuda"
+device: "7"
 eval: false
 images: "images"
-model_path: "path/to/model"
+model_path: "/raid/mhull32/gaussian-splatting/output/nyc_block"
 n_views: 100
 num_classes: 256
 object_path: "object_mask"
 random_init: false
 resolution: 1
 sh_degree: 3
-source_path: "path/to/source"
+source_path: "/raid/mhull32/gaussian-splatting/output/nyc_block"
 train_split: false
 white_background: false
 no_groups: false
-combine_splats: false
+combine_splats: true
 
 # Optimization parameters
 densification_interval: 100
@@ -43,17 +43,17 @@ scaling_lr: 0.005
 # Attack options
 epsilon: 5.0
 alpha: 0.5
-combine_splats_paths: []
-selected_obj_ids: [1]     # example list
-target: [2]               # example list
-untarget: []
+combine_splats_paths: ["output/nyc_block/nyc_maserati.ply", "output/nyc_block/nyc_block_cycles_shadow.ply"]
+selected_obj_ids: [117]     # example list
+target: [0]               # person (see classes.txt)
+untarget: null
 start_cam: 0
 end_cam: 1
 add_cams: 1
 shift_amount: 0.15
 attack_conf_thresh: 0.7
 batch_mode: false
-cam_indices: []
+cam_indices: [0]
 
 # Additional debug flags
 compute_cov3D_python: false
