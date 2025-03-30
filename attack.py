@@ -11,7 +11,7 @@ import PIL
 from PIL import Image, ImageDraw
 from random import randint
 from omegaconf import DictConfig, OmegaConf
-from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
+from detectors.factory import load_detector
 from scene import Scene, GaussianModel
 from gaussian_renderer import render
 from scene.cameras import Camera  
@@ -203,8 +203,9 @@ def run(cfg : DictConfig) -> None:
     # cleanup render and preds directories
     subprocess.run(["make", "clean"], shell=True)
         
-    # detectron2 
-    model, dt2_config = detectron2_model(device=cfg.device)
+    # load detector
+    detector = load_detector(cfg)
+    detector.load_model()
     
     
     if dataset.no_groups == False and dataset.combine_splats == False:
@@ -370,7 +371,7 @@ def run(cfg : DictConfig) -> None:
         
         pil_img.save(img_path)
 
-        rendered_img_input = dt2_input(img_path)
+        rendered_img_input = detector.preprocess_input(img_path)
         # bbox = get_instances_bboxes(model, rendered_img_input, target = target.detach().cpu().numpy(), threshold=0.2)
         bboxes.append(bbox)
 
@@ -391,14 +392,14 @@ def run(cfg : DictConfig) -> None:
                 renders.append(render_pkg["render"])
             renders = torch.stack(renders)
            
-            loss = model_input(model, renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
+            loss = detector.infer(renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
         else:
             cam = viewpoint_stack[0]
             render_pkg = render(cam, gaussians, pipe, bg)
             renders.append(render_pkg["render"])
             renders = torch.stack(renders)
 
-            loss = model_input(model, renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
+            loss = detector.infer(renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
 
         print(f"Iteration: {it}, Loss: {loss}")
         loss.backward(retain_graph=True)
@@ -446,12 +447,14 @@ def run(cfg : DictConfig) -> None:
                                     .cpu()
                                     .numpy()).save(img_path)
 
-                    rendered_img_input = dt2_input(img_path)
-                    success = save_adv_image_preds(
-                        model, dt2_config, input=rendered_img_input,
-                        instance_mask_thresh=attack_conf_thresh,
-                        target=target, untarget=untarget, is_targeted=True,
-                        path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
+                    rendered_img_input = detector.preprocess_input(img_path)
+                    success = detector.predict_and_save(
+                        image=cr,
+                        path=os.path.join(preds_path, f'render_it{it}_c{j}.png'),
+                        target=target,
+                        untarget=untarget,
+                        is_targeted=True,
+                        threshold=attack_conf_thresh
                     )
                     successes.append(success)
                 num_successes = sum(successes)
@@ -474,13 +477,15 @@ def run(cfg : DictConfig) -> None:
                                 .cpu()
                                 .numpy()).save(img_path)
 
-                rendered_img_input = dt2_input(img_path)
-                success = save_adv_image_preds(
-                    model, dt2_config, input=rendered_img_input,
-                    instance_mask_thresh=attack_conf_thresh,
-                    target=target, untarget=untarget, is_targeted=True,
-                    path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png')
-                )
+                rendered_img_input = detector.preprocess_input(img_path)
+                success = detector.predict_and_save(
+                        image=cr,
+                        path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
+                        target=target,
+                        untarget=untarget,
+                        is_targeted=True,
+                        threshold=attack_conf_thresh
+                    )
                 if not batch_mode and success:
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
@@ -496,7 +501,7 @@ def run(cfg : DictConfig) -> None:
                 print(f"Success: {success}")
         del combined_gaussians
         gaussians.optimizer.zero_grad(set_to_none=True)
-        model.zero_grad()
+        detector.zero_grad()
 
 if __name__ == "__main__":
     run()
