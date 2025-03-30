@@ -4,6 +4,9 @@ from detectors.base_detector import BaseDetector
 from PIL import Image, ImageDraw
 import torchvision.transforms as T
 import numpy as np
+from types import SimpleNamespace
+from ultralytics.nn.tasks import DetectionModel
+
 
 class Yolov8Detector(BaseDetector):
     def __init__(self, cfg):
@@ -12,7 +15,6 @@ class Yolov8Detector(BaseDetector):
         self.model = None
 
     def load_model(self):
-        from ultralytics.nn.tasks import DetectionModel
         import yaml
 
         cfg_path = "pretrained-models/yolov8n.yaml"
@@ -32,7 +34,6 @@ class Yolov8Detector(BaseDetector):
         model.to(DEVICE)
         model.train()
         model.training = True
-        from types import SimpleNamespace
         model.args = SimpleNamespace(box=7.5, cls=0.5, dfl=1.5, task="detect")
         self.model = model
 
