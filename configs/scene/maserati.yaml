@@ -5,4 +5,4 @@ combine_splats_paths: ["adv_ply_output/nyc_block/nyc_maserati.ply", "adv_ply_out
 cam_indices: [0]
 target: [0]
 untarget: null
-detector_name: detectron2
+detector_name: yolov8 #detectron2
