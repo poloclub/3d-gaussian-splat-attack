@@ -167,3 +167,4 @@ preds/*
 detectron2/*
 
 settings.json
+depth_anything.ipynb
