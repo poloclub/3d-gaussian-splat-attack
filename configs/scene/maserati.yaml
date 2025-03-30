@@ -3,6 +3,6 @@ source_path: "/raid/mhull32/gaussian-splatting/output/nyc_block"
 model_path: "/raid/mhull32/gaussian-splatting/output/nyc_block"
 combine_splats_paths: ["adv_ply_output/nyc_block/nyc_maserati.ply", "adv_ply_output/nyc_block/nyc_block_cycles_shadow.ply"]
 cam_indices: [0]
-target: [0]
+target: 'person'
 untarget: null
-detector_name: yolov8 #detectron2
+detector_name: yolov8 #detectron2 
