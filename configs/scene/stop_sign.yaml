@@ -3,5 +3,6 @@ source_path: "/raid/mhull32/gaussian-splatting/output/nyc_block_2"
 model_path: "/raid/mhull32/gaussian-splatting/output/nyc_block_2"
 combine_splats_paths: ["adv_ply_output/nyc_block_2/stop_sign.ply", "adv_ply_output/nyc_block_2/nyc_block_perpindicular.ply"]
 cam_indices: [2]
-target: [4]
+target: [6]
 untarget: [11]
+detector_name: detectron2
