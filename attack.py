@@ -190,9 +190,6 @@ def run(cfg : DictConfig) -> None:
     torch.cuda.set_device(DEVICE)
     # Additional attack setup
 
-    selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
-    target = torch.tensor(cfg.scene.target, device=cfg.data_device)
-    untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device) if cfg.scene.untarget is not None else None
     start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
     shift_amount = cfg.shift_amount
     attack_conf_thresh = cfg.attack_conf_thresh
@@ -207,6 +204,18 @@ def run(cfg : DictConfig) -> None:
     detector = load_detector(cfg)
     detector.load_model()
     
+    if isinstance(cfg.scene.target, str):
+        cfg.scene.target = [detector.resolve_label_index(cfg.scene.target)]
+        target = torch.tensor(cfg.scene.target, device=cfg.data_device)
+
+    selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
+    if isinstance(cfg.scene.untarget, str):
+        cfg.scene.untarget = detector.resolve_label_index(cfg.scene.untarget)
+        untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device)
+    elif cfg.scene.untarget is not None:
+        untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device)
+    else:
+        untarget = None
     
     if dataset.no_groups == False and dataset.combine_splats == False:
         # Load Gaussian Splat model

@@ -81,3 +81,10 @@ def preprocess_input(self, image_path: str) -> Dict[str, Any]:
         Zero out gradients of the detector model.
         """
         pass
+
+    @abstractmethod
+    def resolve_label_index(self, label_name: str) -> int:
+        """
+        Converts a human-readable class name (e.g., 'person') into a model-specific label index.
+        """
+        pass

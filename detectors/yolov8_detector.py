@@ -149,3 +149,32 @@ class Yolov8Detector(BaseDetector):
             for param in self.model.model.parameters():
                 if param.grad is not None:
                     param.grad.zero_()
+
+    def resolve_label_index(self, label_name: str) -> int:
+        
+        def normalize(name):
+            return name.replace('_', ' ').lower()
+
+        label_name = normalize(label_name)
+
+        coco_class_names = [
+            'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train',
+            'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter',
+            'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear',
+            'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase',
+            'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat',
+            'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle',
+            'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+            'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut',
+            'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet',
+            'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
+            'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+            'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+        ]
+
+        label_lookup = {normalize(name): idx for idx, name in enumerate(coco_class_names)}
+
+        if label_name not in label_lookup:
+            raise ValueError(f"Label '{label_name}' not found in YOLOv8 COCO class list.")
+
+        return label_lookup[label_name]

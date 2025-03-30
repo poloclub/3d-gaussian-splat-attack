@@ -182,3 +182,19 @@ class Detectron2Detector(BaseDetector):
             # for param in self.model.parameters():
             #     if param.grad is not None:
             #         param.grad.zero_()
+
+    def resolve_label_index(self, label_name: str) -> int:
+        """
+        Converts a human-readable class name into a Detectron2 label index based on COCO metadata.
+        """
+        def normalize(name):
+            return name.replace('_', ' ').lower()
+
+        label_name = normalize(label_name)
+        class_names = MetadataCatalog.get(self.dt2_cfg.DATASETS.TRAIN[0]).thing_classes
+        label_lookup = {normalize(name): idx for idx, name in enumerate(class_names)}
+
+        if label_name not in label_lookup:
+            raise ValueError(f"Label '{label_name}' not found in Detectron2 class list.")
+
+        return label_lookup[label_name]
