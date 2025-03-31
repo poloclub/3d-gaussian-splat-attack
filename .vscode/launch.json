@@ -458,7 +458,7 @@
             "justMyCode": false,
             "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},      
             "args": [
-                "scene=maserati"
+                "scene=maserati",
             ]            
         }, {
             "name": "Attack Stop Sign",
@@ -471,6 +471,14 @@
             "args": [
                 "scene=stop_sign"
             ]            
-        },
+        }, {
+            "name": "Debug YOLOv8",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "debug_yolov8_outputs.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},
+        },        
     ]
 }
