@@ -2,11 +2,14 @@ from ultralytics import YOLO
 import torch as ch
 from detectors.base_detector import BaseDetector
 from PIL import Image, ImageDraw
+from PIL import ImageFont
 import torchvision.transforms as T
 import numpy as np
 from types import SimpleNamespace
 from ultralytics.nn.tasks import DetectionModel
-
+import torchvision.transforms.functional as TF
+from ultralytics.utils import LOGGER
+LOGGER.setLevel("WARNING")
 
 class Yolov8Detector(BaseDetector):
     def __init__(self, cfg):
@@ -22,10 +25,6 @@ class Yolov8Detector(BaseDetector):
 
         with open(cfg_path, "r") as f:
             model_cfg = yaml.safe_load(f)
-
-        # Inject YOLOv8n scaling factors manually
-        model_cfg['depth_multiple'] = 0.33
-        model_cfg['width_multiple'] = 0.25
 
         model = DetectionModel(model_cfg)
         checkpoint = ch.load(weights_path, map_location="cpu")
@@ -47,7 +46,37 @@ class Yolov8Detector(BaseDetector):
         bboxes = bboxes.to(x.device)
         target = target.to(x.device)
 
-        # Ensure 3D bbox shape: (B, N, 4)
+        # Ensure bbox tensor shape is (B, N, 4) for batch processing
+        if bboxes.dim() == 1:
+            bboxes = bboxes.unsqueeze(0).unsqueeze(0)
+        elif bboxes.dim() == 2:
+            bboxes = bboxes.unsqueeze(1)
+
+        # if x.dim() == 3:
+        #     x = x.unsqueeze(0)
+        # x = x.to(dtype=ch.float32)
+        
+        # def resize_to_multiple(img, multiple=32):
+        #     h, w = img.shape[2], img.shape[3]
+        #     new_h = ((h + multiple - 1) // multiple) * multiple
+        #     new_w = ((w + multiple - 1) // multiple) * multiple
+        #     return ch.nn.functional.interpolate(img, size=(new_h, new_w), mode='bilinear', align_corners=False)
+
+        # x = resize_to_multiple(x)
+
+        # # Normalize bbox to 0-1 as YOLO expects (x_center, y_center, width, height)
+        # height = x.shape[2]
+        # width = x.shape[3]
+        # boxes = bboxes.clone()
+        # boxes[:, :, 0::2] /= width   # x1 and x2
+        # boxes[:, :, 1::2] /= height  # y1 and y2
+        # xywh = ch.zeros_like(boxes)
+        # xywh[:, :, 0] = (boxes[:, :, 0] + boxes[:, :, 2]) / 2  # x_center
+        # xywh[:, :, 1] = (boxes[:, :, 1] + boxes[:, :, 3]) / 2  # y_center
+        # xywh[:, :, 2] = boxes[:, :, 2] - boxes[:, :, 0]        # width
+        # xywh[:, :, 3] = boxes[:, :, 3] - boxes[:, :, 1]        # height
+
+              # Ensure 3D bbox shape: (B, N, 4)
         if bboxes.dim() == 1:
             bboxes = bboxes.unsqueeze(0).unsqueeze(0)
         elif bboxes.dim() == 2:
@@ -57,26 +86,52 @@ class Yolov8Detector(BaseDetector):
             x = x.unsqueeze(0)
         x = x.to(dtype=ch.float32)
         
-        def resize_to_multiple(img, multiple=32):
-            h, w = img.shape[2], img.shape[3]
-            new_h = ((h + multiple - 1) // multiple) * multiple
-            new_w = ((w + multiple - 1) // multiple) * multiple
-            return ch.nn.functional.interpolate(img, size=(new_h, new_w), mode='bilinear', align_corners=False)
+        # Letterbox function: resizes while preserving aspect ratio and adds padding.
+        def letterbox(img, new_shape=(640, 640), color=(114, 114, 114)):
+            # img: tensor (B, C, H, W)
+            B, C, H, W = img.shape
+            new_h, new_w = new_shape
+            # Compute scale (do not scale up if not necessary)
+            scale = min(new_h / H, new_w / W)
+            resized_h = int(round(H * scale))
+            resized_w = int(round(W * scale))
+            # Compute padding
+            pad_h = new_h - resized_h
+            pad_w = new_w - resized_w
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
+            # Resize image
+            img_resized = ch.nn.functional.interpolate(img, size=(resized_h, resized_w), mode='bilinear', align_corners=False)
+            # Pad image; color value is divided by 255 since img is expected to be [0,1]
+            img_padded = ch.nn.functional.pad(img_resized, (pad_left, pad_right, pad_top, pad_bottom), value=color[0]/255.0)
+            return img_padded, scale, pad_left, pad_top
 
-        x = resize_to_multiple(x)
+        # Apply letterbox to image tensor x
+        new_shape = (640,640)  # Adjust as needed
+        x, scale, pad_left, pad_top = letterbox(x, new_shape=new_shape)
+        new_w, new_h = new_shape
 
-        # Normalize bbox to 0-1 as YOLO expects (x_center, y_center, width, height)
-        height = x.shape[2]
-        width = x.shape[3]
+        # Adjust bounding boxes accordingly.
+        # Assume original bboxes are in pixel coordinates relative to the original image.
         boxes = bboxes.clone()
-        boxes[:, :, 0::2] /= width   # x1 and x2
-        boxes[:, :, 1::2] /= height  # y1 and y2
+        # Scale boxes by the same factor
+        boxes = boxes * ch.tensor([scale, scale, scale, scale], device=boxes.device)
+        # Add padding offsets to x coordinates (indices 0 and 2) and y coordinates (indices 1 and 3)
+        boxes[:, :, 0::2] += pad_left
+        boxes[:, :, 1::2] += pad_top
+        # Normalize the coordinates by new image dimensions
+        boxes[:, :, 0::2] /= new_w
+        boxes[:, :, 1::2] /= new_h
+
+        # Convert from [x1, y1, x2, y2] to YOLO format: [x_center, y_center, width, height]
         xywh = ch.zeros_like(boxes)
         xywh[:, :, 0] = (boxes[:, :, 0] + boxes[:, :, 2]) / 2  # x_center
         xywh[:, :, 1] = (boxes[:, :, 1] + boxes[:, :, 3]) / 2  # y_center
         xywh[:, :, 2] = boxes[:, :, 2] - boxes[:, :, 0]        # width
         xywh[:, :, 3] = boxes[:, :, 3] - boxes[:, :, 1]        # height
-
+        # output img and bbox here to debug
         losses = []
         for i in range(x.shape[0]):
             targets = ch.cat([target[i].view(-1, 1).float(), xywh[i]], dim=1)
@@ -90,18 +145,17 @@ class Yolov8Detector(BaseDetector):
                 "batch_idx": ch.zeros(target[i].numel(), dtype=ch.int64, device=x.device)
             }
             out = self.model(batch)
-            loss = out[0] if isinstance(out, tuple) else out
+            # loss = out[0] if isinstance(out, tuple) else out
+            loss = out[0] #out[1][1] 
             losses.append(loss)
 
         return sum(losses) / len(losses)
 
     def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB") -> bool:
-        from ultralytics.utils.ops import non_max_suppression
-        import torchvision.transforms.functional as TF
 
-        image_np = (image.detach().permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
-        image_pil = Image.fromarray(image_np).convert("RGB")
-        img_tensor = TF.to_tensor(image_pil).unsqueeze(0).to(next(self.model.parameters()).device) * 255
+        image_np = (image.detach().clamp(0,1).permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
+        image_pil = Image.fromarray(image_np) #.convert("RGB")
+        img_tensor = TF.to_tensor(image_pil).unsqueeze(0).to(next(self.model.parameters()).device)
         img_tensor = img_tensor.to(dtype=ch.float32)
 
         def resize_to_multiple(img, multiple=32):
@@ -111,21 +165,37 @@ class Yolov8Detector(BaseDetector):
             return ch.nn.functional.interpolate(img, size=(new_h, new_w), mode='bilinear', align_corners=False)
 
         img_tensor = resize_to_multiple(img_tensor)
+        orig_h, orig_w = image_np.shape[:2]
+        resized_h, resized_w = img_tensor.shape[2], img_tensor.shape[3]
+        scale_x = orig_w / resized_w
+        scale_y = orig_h / resized_h
 
         self.model.eval()
         with ch.no_grad():
-            preds = self.model(img_tensor)
-            dets = non_max_suppression(preds, conf_thres=threshold)[0]
+            # yolo_wrapper = YOLO("pretrained-models/yolov8n.pt")
+            yolo_wrapper = YOLO("pretrained-models/yolov8n.pt", task="detect")
+            results = yolo_wrapper(img_tensor, verbose=False)
+            dets = results[0].boxes.data if results and results[0].boxes is not None else None
 
         # Save visualization
         draw = Image.fromarray(image_np.copy())
         if dets is not None and len(dets) > 0:
             draw_ctx = ImageDraw.Draw(draw)
             for *xyxy, conf, cls in dets:
-                xyxy = [int(coord.item()) for coord in xyxy]
-                draw_ctx.rectangle(xyxy, outline="red", width=2)
-                draw_ctx.text((xyxy[0], xyxy[1] - 10), f"cls: {int(cls.item())}, conf: {conf.item():.2f}", fill="red")
-
+                x1, y1, x2, y2 = [coord.item() for coord in xyxy]
+                x1 *= scale_x
+                x2 *= scale_x
+                y1 *= scale_y
+                y2 *= scale_y
+                xyxy = [int(x1), int(y1), int(x2), int(y2)]
+                draw_ctx.rectangle(xyxy, outline="red", width=3)
+                class_idx = int(cls.item())
+                class_name = self.resolve_label_index(class_idx)
+                try:
+                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size=14)
+                except OSError:
+                    font = ImageFont.load_default()
+                draw_ctx.text((xyxy[0], xyxy[1] - 10), f"{class_name}, {conf.item():.2f}", fill="white", font=font)
         draw.save(path)
 
         pred_classes = dets[:, -1].tolist() if dets is not None else []
@@ -151,12 +221,9 @@ class Yolov8Detector(BaseDetector):
                 if param.grad is not None:
                     param.grad.zero_()
 
-    def resolve_label_index(self, label_name: str) -> int:
-        
+    def resolve_label_index(self, label):
         def normalize(name):
             return name.replace('_', ' ').lower()
-
-        label_name = normalize(label_name)
 
         coco_class_names = [
             'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train',
@@ -173,9 +240,14 @@ class Yolov8Detector(BaseDetector):
             'scissors', 'teddy bear', 'hair drier', 'toothbrush'
         ]
 
+        if isinstance(label, int):
+            if 0 <= label < len(coco_class_names):
+                return coco_class_names[label]
+            raise ValueError(f"Class index {label} is out of bounds.")
+
+        label = normalize(label)
         label_lookup = {normalize(name): idx for idx, name in enumerate(coco_class_names)}
+        if label not in label_lookup:
+            raise ValueError(f"Label '{label}' not found in YOLOv8 COCO class list.")
 
-        if label_name not in label_lookup:
-            raise ValueError(f"Label '{label_name}' not found in YOLOv8 COCO class list.")
-
-        return label_lookup[label_name]
+        return label_lookup[label]
