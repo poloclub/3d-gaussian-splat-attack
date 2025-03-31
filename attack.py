@@ -49,6 +49,74 @@ def gaussian_scaling_linf_attack(gaussian, alpha, epsilon, features_scaling):
         gaussian._scaling.add_(f_scaling_eta)
         gaussian._scaling.sub_(features_scaling).clamp_(-epsilon, epsilon).add_(features_scaling)
 
+def gaussian_position_l2_attack(gaussian, alpha, epsilon, features_xyz):
+    with torch.no_grad():
+        grad_xyz = gaussian._xyz.grad
+        norm_xyz = torch.norm(grad_xyz.view(-1), p=2)
+
+        if norm_xyz > 0:
+            f_xyz_eta = alpha * (grad_xyz / norm_xyz)
+        else:
+            f_xyz_eta = torch.zeros_like(grad_xyz)
+
+        f_xyz_eta.mul_(-1)
+        gaussian._xyz.add_(f_xyz_eta)
+
+        delta_xyz = gaussian._xyz - features_xyz
+        delta_xyz = delta_xyz.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._xyz.copy_(features_xyz + delta_xyz)
+
+def gaussian_rotation_l2_attack(gaussian, alpha, epsilon, features_rotation):
+    with torch.no_grad():
+        grad_rotation = gaussian._rotation.grad
+        norm_rotation = torch.norm(grad_rotation.view(-1), p=2)
+
+        if norm_rotation > 0:
+            f_rotation_eta = alpha * (grad_rotation / norm_rotation)
+        else:
+            f_rotation_eta = torch.zeros_like(grad_rotation)
+
+        f_rotation_eta.mul_(-1)
+        gaussian._rotation.add_(f_rotation_eta)
+
+        delta_rotation = gaussian._rotation - features_rotation
+        delta_rotation = delta_rotation.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._rotation.copy_(features_rotation + delta_rotation)
+
+def gaussian_opacity_l2_attack(gaussian, alpha, epsilon, features_opacity):
+    with torch.no_grad():
+        grad_opacity = gaussian._opacity.grad
+        norm_opacity = torch.norm(grad_opacity.view(-1), p=2)
+
+        if norm_opacity > 0:
+            f_opacity_eta = alpha * (grad_opacity / norm_opacity)
+        else:
+            f_opacity_eta = torch.zeros_like(grad_opacity)
+
+        f_opacity_eta.mul_(-1)
+        gaussian._opacity.add_(f_opacity_eta)
+
+        delta_opacity = gaussian._opacity - features_opacity
+        delta_opacity = delta_opacity.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._opacity.copy_(features_opacity + delta_opacity)
+
+def gaussian_scaling_l2_attack(gaussian, alpha, epsilon, features_scaling):
+    with torch.no_grad():
+        grad_scaling = gaussian._scaling.grad
+        norm_scaling = torch.norm(grad_scaling.view(-1), p=2)
+
+        if norm_scaling > 0:
+            f_scaling_eta = alpha * (grad_scaling / norm_scaling)
+        else:
+            f_scaling_eta = torch.zeros_like(grad_scaling)
+
+        f_scaling_eta.mul_(-1)
+        gaussian._scaling.add_(f_scaling_eta)
+
+        delta_scaling = gaussian._scaling - features_scaling
+        delta_scaling = delta_scaling.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._scaling.copy_(features_scaling + delta_scaling)
+
 def gaussian_color_linf_attack(gaussian, alpha, epsilon, features_rest, features_dc):
     with torch.no_grad():
         f_rest_eta = alpha * torch.sign(gaussian._features_rest.grad)
@@ -417,6 +485,11 @@ def run(cfg : DictConfig) -> None:
             epsilon = cfg.epsilon
             alpha = cfg.alpha
             gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            # gaussian_position_l2_attack(gaussians, alpha, epsilon, original_features_xyz)
+            # gaussian_scaling_l2_attack(gaussians, alpha, epsilon, original_features_scaling)
+            # gaussian_rotation_l2_attack(gaussians, alpha, epsilon, original_features_rotation)
+            # gaussian_opacity_l2_attack(gaussians, alpha, epsilon, original_features_opacity)
+            
             # Uncomment the following lines to apply different attacks
             # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
