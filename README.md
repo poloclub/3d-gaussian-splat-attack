@@ -54,3 +54,9 @@ python edit_gs_color.py input.ply output.ply sepia
 
 python edit_gs_color.py input.ply output.ply random
 ```
+
+### Install Yolov3 as submodule 
+```bash
+git submodule add https://github.com/ultralytics/yolov3 detectors/yolov3-legacy
+git submodule update --init --recursive
+```
