@@ -149,7 +149,7 @@ class Yolov8Detector(BaseDetector):
             loss = out[0] #out[1][1] 
             losses.append(loss)
 
-        return sum(losses) / len(losses)
+        return ch.sum(losses[0]) / losses[0].shape[0]
 
     def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB") -> bool:
 
