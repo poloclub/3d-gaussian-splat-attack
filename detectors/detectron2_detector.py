@@ -146,7 +146,7 @@ class Detectron2Detector(BaseDetector):
                 gt_box_struct = Boxes(gt_box_tensor).to(pred_boxes.device)
 
                 if len(pred_boxes) > 0:
-                    ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze()
+                    ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze(1)
                     best_idx = ious.argmax().item()
                     best_iou = ious[best_idx].item()
                     best_class = instances.pred_classes[best_idx].item()
