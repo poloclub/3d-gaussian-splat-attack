@@ -172,8 +172,8 @@ class Yolov8Detector(BaseDetector):
 
         self.model.eval()
         with ch.no_grad():
-            # yolo_wrapper = YOLO("pretrained-models/yolov8n.pt")
-            yolo_wrapper = YOLO("pretrained-models/yolov8n.pt", task="detect")
+            # yolo_wrapper = YOLO("pretrained-models/yolov8/yolov8n.pt")
+            yolo_wrapper = YOLO("pretrained-models/yolov8/yolov8n.pt", task="detect")
             results = yolo_wrapper(img_tensor, verbose=False)
             dets = results[0].boxes.data if results and results[0].boxes is not None else None
 
