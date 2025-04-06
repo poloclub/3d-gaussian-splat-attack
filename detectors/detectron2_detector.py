@@ -16,6 +16,8 @@ from detectron2.structures import Instances
 from detectron2.data.detection_utils import *
 from detectron2.modeling import build_model
 from detectron2.utils.events import EventStorage
+from detectron2.structures.boxes import pairwise_iou
+
 
 class Detectron2Detector(BaseDetector):
     def __init__(self, cfg):
@@ -102,7 +104,7 @@ class Detectron2Detector(BaseDetector):
         del x
         return loss
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB") -> bool:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None) -> bool:
         """
         Run model prediction on the given image and save the visualization to disk.
         """
@@ -136,8 +138,25 @@ class Detectron2Detector(BaseDetector):
             out = v.draw_instance_predictions(instances.to("cpu"))
             pred = out.get_image()
 
-            target_pred_exists = target in instances.pred_classes.cpu().numpy().tolist()
-            untarget_pred_not_exists = untarget not in instances.pred_classes.cpu().numpy().tolist()
+            if gt_bbox is not None:
+                v.draw_box(gt_bbox, edge_color='green')
+
+                gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                pred_boxes = instances.pred_boxes
+                gt_box_struct = Boxes(gt_box_tensor).to(pred_boxes.device)
+
+                if len(pred_boxes) > 0:
+                    ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze()
+                    best_idx = ious.argmax().item()
+                    best_iou = ious[best_idx].item()
+                    best_class = instances.pred_classes[best_idx].item()
+                    target_pred_exists = (best_iou > 0.5 and best_class == target)
+                else:
+                    target_pred_exists = False
+            else:
+                target_pred_exists = False
+
+            untarget_pred_not_exists = all(cls != untarget for cls in instances.pred_classes.cpu().numpy())
 
         self.model_train_mode()
         PIL.Image.fromarray(pred).save(path)

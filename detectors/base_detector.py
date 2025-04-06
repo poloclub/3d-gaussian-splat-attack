@@ -1,6 +1,7 @@
 import torch as ch
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
+
 class BaseDetector(ABC):
     """
     A base class for object detectors that provides a common interface:
@@ -40,7 +41,7 @@ class BaseDetector(ABC):
         pass
 
     @abstractmethod
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB") -> bool:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None) -> bool:
         """
         Run model prediction on the given image and save the visualization to disk.
 
@@ -52,28 +53,29 @@ class BaseDetector(ABC):
             is_targeted: Whether evaluation is for targeted attack.
             threshold: Confidence threshold for visualized predictions.
             format: Image color format for visualization (RGB or BGR).
+            gt_bbox: Optional ground truth bounding box [x1, y1, x2, y2] for visualization or evaluation purposes.
 
         Returns:
             bool: Whether the prediction meets the target/untarget criteria.
         """
         pass
 
-@abstractmethod
-def preprocess_input(self, image_path: str) -> Dict[str, Any]:
-    """
-    Convert an image path into a model-specific input dictionary.
+    @abstractmethod
+    def preprocess_input(self, image_path: str) -> Dict[str, Any]:
+        """
+        Convert an image path into a model-specific input dictionary.
 
-    Args:
-        image_path: Path to the image file.
+        Args:
+            image_path: Path to the image file.
 
-    Returns:
-        A dictionary with keys expected by the model, such as:
-            - image: Tensor
-            - height: int
-            - width: int
-            - instances: (optional) GT boxes and labels
-    """
-    pass
+        Returns:
+            A dictionary with keys expected by the model, such as:
+                - image: Tensor
+                - height: int
+                - width: int
+                - instances: (optional) GT boxes and labels
+        """
+        pass
 
     @abstractmethod
     def zero_grad(self):

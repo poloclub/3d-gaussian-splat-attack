@@ -139,8 +139,8 @@ def run(cfg : DictConfig) -> None:
         gaussians_original = copy.deepcopy(gaussians)
         
         # Updated apply_mask function to handle mask correctly
-        #gaussians_original.removal_setup(opt, obj_1_mask3d) # inverse 
-        #gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
+        gaussians_original.removal_setup(opt, obj_1_mask3d) # inverse 
+        gaussians.removal_setup(opt, ~obj_1_mask3d.bool())
              
         
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
@@ -181,6 +181,41 @@ def run(cfg : DictConfig) -> None:
     #     viewpoint_stack.append(camera)
 
     total_views = len(viewpoint_stack)
+
+    # get benign render bboxes - would be better if you could SOLO render the target!
+    # for each benign render, get the bbox w/ detection of target class.
+    bboxes = []
+    for i, cam in enumerate(tqdm(viewpoint_stack, desc="Rendering GT bboxes...", unit="camera")):
+        render_pkg = render(cam, gaussians, pipe, torch.tensor([0,0,0],dtype=torch.float32, device="cuda")) # always use black background for detection
+        img_path = f"renders/render_{i}.png"
+        np_img = (torch.clamp(render_pkg["render"], min=0, max=1.0) * 255) \
+                        .byte() \
+                        .permute(1, 2, 0) \
+                        .contiguous() \
+                        .cpu() \
+                        .numpy() 
+        pil_img = Image.fromarray(np_img)
+        pil_img_bw = pil_img.convert('L')
+        bw_tresh = 20
+        pil_img_bw = pil_img_bw.point(lambda p: p > bw_tresh and 255)
+        # pil_img_bw = PIL.ImageOps.invert(pil_img_bw)
+        bbox = pil_img_bw.getbbox()
+        
+        pil_img.save(img_path)
+
+        rendered_img_input = detector.preprocess_input(img_path)
+        # bbox = get_instances_bboxes(model, rendered_img_input, target = target.detach().cpu().numpy(), threshold=0.2)
+        bboxes.append(bbox)
+
+        draw = PIL.ImageDraw.Draw(pil_img_bw)
+        draw.rectangle(bbox, outline="red", width=3)
+        draw.text((bbox[0], bbox[1] - 10), "object", fill="red")
+        pil_img_bw.save(f'renders/bw/bbox_render_{i}.jpg')    
+        bbox = np.expand_dims(np.array(bbox), axis=0)
+
+    gt_bboxes = np.array(bboxes)    
+
+
     for it in tqdm(range(0, total_views), desc="Rendering", unit="it"):
         renders = []
         cam = viewpoint_stack[0]
@@ -189,6 +224,14 @@ def run(cfg : DictConfig) -> None:
         renders = torch.stack(renders)
         
         combined_gaussians = copy.deepcopy(gaussians)
+        # combine the gaussians .plys together in one scene.
+        combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
+        combined_gaussians.concat_setup("features_dc", gaussians_original._features_dc, True)
+        combined_gaussians.concat_setup("xyz", gaussians_original._xyz, True)
+        combined_gaussians.concat_setup("scaling", gaussians_original._scaling, True)
+        combined_gaussians.concat_setup("opacity", gaussians_original._opacity, True)
+        combined_gaussians.concat_setup("rotation", gaussians_original._rotation, True)
+        combined_gaussians.concat_setup("objects_dc", gaussians_original._objects_dc, True)        
         concat_renders = []
         cam = viewpoint_stack[0]
         render_pkg = render(cam, combined_gaussians, pipe, bg)
@@ -196,7 +239,7 @@ def run(cfg : DictConfig) -> None:
 
         img_path = f"renders/nyc_block_1_1_adv/{it}.png"
         cr = concat_renders[0]
-        # preds_path = "preds"
+        preds_path = "preds"
         Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
                         .byte()
                         .permute(1, 2, 0)
@@ -204,15 +247,15 @@ def run(cfg : DictConfig) -> None:
                         .cpu()
                         .numpy()).save(img_path)
 
-        # rendered_img_input = detector.preprocess_input(img_path)
-        # success = detector.predict_and_save(
-        #         image=cr,
-        #         path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
-        #         target=target,
-        #         untarget=untarget,
-        #         is_targeted=True,
-        #         threshold=attack_conf_thresh
-        #     )
+        rendered_img_input = detector.preprocess_input(img_path)
+        _ = detector.predict_and_save(
+                image=cr,
+                path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
+                target=target,
+                untarget=None,
+                is_targeted=True,
+                threshold=attack_conf_thresh,
+                gt_bbox = gt_bboxes[it])
         viewpoint_stack.pop(0)
         if len(viewpoint_stack) == 0:
             print ("finished rendering all cameras")                  
