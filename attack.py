@@ -337,23 +337,7 @@ def run(cfg : DictConfig) -> None:
         # List of .ply file paths to be combined
         ply_paths = cfg.scene.combine_splats_paths
         if ply_paths is None or len(ply_paths) < 2:
-            raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
-        # ply_paths = [
-        #     "output/bike/point_cloud_302_5.ply",
-        #     "output/bike/point_cloud_109.ply",
-        # ]
-        # ply_paths = [
-        #     "output/room/truck.ply",
-        #     "output/room/plain_room.ply",
-        # ]    
-        # ply_paths = [
-        #     "output/nyc_block/nyc_maserati.ply",
-        #     "output/nyc_block/nyc_block_cycles_shadow.ply",
-        # ]      
-        # ply_paths = [
-        #     "output/nyc_block/single_obj_point_cloud_61.ply", # attacked car
-        #      "output/room/plain_room.ply",
-        # ]                 
+            raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")                     
 
         # Combine the .ply files
         gaussians.combine_splats(ply_paths)
