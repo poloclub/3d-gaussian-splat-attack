@@ -20,8 +20,8 @@ class Yolov8Detector(BaseDetector):
     def load_model(self):
         import yaml
 
-        cfg_path = "pretrained-models/yolov8n.yaml"
-        weights_path = "pretrained-models/yolov8n.pt"
+        cfg_path = "pretrained-models/yolov8/yolov8n.yaml"
+        weights_path = "pretrained-models/yolov8/yolov8n.pt"
 
         with open(cfg_path, "r") as f:
             model_cfg = yaml.safe_load(f)
