@@ -104,7 +104,7 @@ class Detectron2Detector(BaseDetector):
         del x
         return loss
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None) -> bool:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> Any:
         """
         Run model prediction on the given image and save the visualization to disk.
         """
@@ -134,10 +134,12 @@ class Detectron2Detector(BaseDetector):
             v = Visualizer(pbi, MetadataCatalog.get(self.dt2_cfg.DATASETS.TRAIN[0]), scale=1.0)
             things = np.array(MetadataCatalog.get(self.dt2_cfg.DATASETS.TRAIN[0]).thing_classes)
             predicted_classes = things[instances.pred_classes.cpu().numpy().tolist()]
-            print(f'Predicted Class: {predicted_classes}')
+            # log.info(f'Predicted Class: {predicted_classes}')
             out = v.draw_instance_predictions(instances.to("cpu"))
-            pred = out.get_image()
 
+            closest_confidence = None
+            best_class = None
+            best_iou = None
             if gt_bbox is not None:
                 v.draw_box(gt_bbox, edge_color='green')
 
@@ -150,16 +152,47 @@ class Detectron2Detector(BaseDetector):
                     best_idx = ious.argmax().item()
                     best_iou = ious[best_idx].item()
                     best_class = instances.pred_classes[best_idx].item()
+                    closest_confidence = instances.scores[best_idx].item()
                     target_pred_exists = (best_iou > 0.5 and best_class == target)
                 else:
                     target_pred_exists = False
             else:
                 target_pred_exists = False
 
-            untarget_pred_not_exists = all(cls != untarget for cls in instances.pred_classes.cpu().numpy())
+            if gt_bbox is not None:
+                gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                pred_boxes = instances.pred_boxes
+                gt_box_struct = Boxes(gt_box_tensor).to(pred_boxes.device)
+ 
+                if len(pred_boxes) > 0:
+                    ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze(1)
+                    best_idx = ious.argmax().item()
+                    best_iou = ious[best_idx].item()
+                    best_class = instances.pred_classes[best_idx].item()
+                    untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
+                else:
+                    untarget_pred_not_exists = True
+            else:
+                untarget_pred_not_exists = all(cls != untarget for cls in instances.pred_classes.cpu().numpy())
+
+            class_names = MetadataCatalog.get(self.dt2_cfg.DATASETS.TRAIN[0]).thing_classes
+            best_class_name = class_names[best_class] if best_class is not None else None
 
         self.model_train_mode()
+        pred = out.get_image()
         PIL.Image.fromarray(pred).save(path)
+
+        if result_dict:
+            return_result = {
+                "closest_class": best_class if gt_bbox is not None and len(pred_boxes) > 0 else None,
+                "closest_class_name": best_class_name if gt_bbox is not None and len(pred_boxes) > 0 else None,
+                "closest_confidence": closest_confidence if gt_bbox is not None and len(pred_boxes) > 0 else None,
+            }
+            meets_criteria = (
+                (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
+                (not is_targeted and untarget_pred_not_exists)
+            )
+            return meets_criteria, return_result
 
         if is_targeted:
             if target_pred_exists and untarget is None:

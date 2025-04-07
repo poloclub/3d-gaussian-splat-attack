@@ -1,6 +1,8 @@
 import torch as ch
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
+import logging
+log = logging.getLogger(__name__)
 
 class BaseDetector(ABC):
     """
@@ -41,7 +43,7 @@ class BaseDetector(ABC):
         pass
 
     @abstractmethod
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None) -> bool:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> Any:
         """
         Run model prediction on the given image and save the visualization to disk.
 
@@ -57,6 +59,11 @@ class BaseDetector(ABC):
 
         Returns:
             bool: Whether the prediction meets the target/untarget criteria.
+            If `result_dict` is True, also returns:
+                Dict[str, Any]: {
+                    "closest_class": int,
+                    "closest_confidence": float
+                }
         """
         pass
 
