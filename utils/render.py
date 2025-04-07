@@ -18,6 +18,8 @@ from scene.cameras import Camera
 from arguments import GroupParams
 # from edit_object_removal import points_inside_convex_hull
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+import logging
+log = logging.getLogger(__name__)
 
 select_thresh = 0.5 # selected threshold for the gaussian group
 
@@ -90,6 +92,9 @@ def run(cfg : DictConfig) -> None:
     if batch_mode:
         raise NotImplementedError("Batch mode is not supported in rendering and will be ignored.")
 
+
+    # cleanup render and preds directories
+    subprocess.run(["make", "clean"], shell=True)        
     # load detector
     detector = load_detector(cfg)
     detector.load_model()
@@ -237,7 +242,7 @@ def run(cfg : DictConfig) -> None:
         render_pkg = render(cam, combined_gaussians, pipe, bg)
         concat_renders.append(render_pkg["render"]) 
 
-        img_path = f"renders/nyc_block_1_0_benign/{it}.png"
+        img_path = f"renders/nyc_block_0_9_adv/{it}.png"
         cr = concat_renders[0]
         preds_path = "preds"
         Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
@@ -248,14 +253,19 @@ def run(cfg : DictConfig) -> None:
                         .numpy()).save(img_path)
 
         rendered_img_input = detector.preprocess_input(img_path)
-        _ = detector.predict_and_save(
+        success, result = detector.predict_and_save(
                 image=cr,
-                path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
+                path=os.path.join(preds_path, f'render_c{total_views-len(viewpoint_stack)}.png'),
                 target=target,
                 untarget=None,
                 is_targeted=True,
                 threshold=attack_conf_thresh,
-                gt_bbox = gt_bboxes[it])
+                gt_bbox = gt_bboxes[it],
+                result_dict=True)
+        closest_class = result['closest_class_name'] if result['closest_class_name'] is not None else "None"
+        confidence_str = f"{result['closest_confidence']:.4f}" if isinstance(result['closest_confidence'], (float, int)) else "None"
+        log.info(f"[cam {it}] success: {success}, max_iou_pred: {closest_class}, conf: {confidence_str}")
+        
         viewpoint_stack.pop(0)
         if len(viewpoint_stack) == 0:
             print ("finished rendering all cameras")                  
