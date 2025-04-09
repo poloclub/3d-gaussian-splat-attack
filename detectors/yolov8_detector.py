@@ -1,3 +1,4 @@
+from typing import List, Dict, Any
 from ultralytics import YOLO
 import torch as ch
 from detectors.base_detector import BaseDetector
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 from ultralytics.nn.tasks import DetectionModel
 import torchvision.transforms.functional as TF
 from ultralytics.utils import LOGGER
+from torchvision.ops import box_iou
 LOGGER.setLevel("WARNING")
 
 class Yolov8Detector(BaseDetector):
@@ -146,67 +148,100 @@ class Yolov8Detector(BaseDetector):
             }
             out = self.model(batch)
             # loss = out[0] if isinstance(out, tuple) else out
-            loss = out[0] #out[1][1] 
+            loss = out[1] #out[1][1] 
             losses.append(loss)
 
         return ch.sum(losses[0]) / losses[0].shape[0]
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB") -> bool:
-
-        image_np = (image.detach().clamp(0,1).permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
-        image_pil = Image.fromarray(image_np) #.convert("RGB")
-        img_tensor = TF.to_tensor(image_pil).unsqueeze(0).to(next(self.model.parameters()).device)
-        img_tensor = img_tensor.to(dtype=ch.float32)
-
-        def resize_to_multiple(img, multiple=32):
-            h, w = img.shape[2], img.shape[3]
-            new_h = ((h + multiple - 1) // multiple) * multiple
-            new_w = ((w + multiple - 1) // multiple) * multiple
-            return ch.nn.functional.interpolate(img, size=(new_h, new_w), mode='bilinear', align_corners=False)
-
-        img_tensor = resize_to_multiple(img_tensor)
-        orig_h, orig_w = image_np.shape[:2]
-        resized_h, resized_w = img_tensor.shape[2], img_tensor.shape[3]
-        scale_x = orig_w / resized_w
-        scale_y = orig_h / resized_h
-
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> Any:
         self.model.eval()
         with ch.no_grad():
-            # yolo_wrapper = YOLO("pretrained-models/yolov8/yolov8n.pt")
+            image_np = (image.detach().clamp(0,1).permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
+            image_pil = Image.fromarray(image_np)
+            img_tensor = TF.to_tensor(image_pil).unsqueeze(0).to(next(self.model.parameters()).device)
+            img_tensor = img_tensor.to(dtype=ch.float32)
+
+            def resize_to_multiple(img, multiple=32):
+                h, w = img.shape[2], img.shape[3]
+                new_h = ((h + multiple - 1) // multiple) * multiple
+                new_w = ((w + multiple - 1) // multiple) * multiple
+                return ch.nn.functional.interpolate(img, size=(new_h, new_w), mode='bilinear', align_corners=False)
+
+            img_tensor = resize_to_multiple(img_tensor)
+            orig_h, orig_w = image_np.shape[:2]
+            resized_h, resized_w = img_tensor.shape[2], img_tensor.shape[3]
+            scale_x = orig_w / resized_w
+            scale_y = orig_h / resized_h
+
             yolo_wrapper = YOLO("pretrained-models/yolov8/yolov8n.pt", task="detect")
             results = yolo_wrapper(img_tensor, verbose=False)
             dets = results[0].boxes.data if results and results[0].boxes is not None else None
 
-        # Save visualization
         draw = Image.fromarray(image_np.copy())
+        pred_classes = []
+        closest_confidence = None
+        best_class = None
+        best_iou = None
+
         if dets is not None and len(dets) > 0:
             draw_ctx = ImageDraw.Draw(draw)
+            boxes = []
             for *xyxy, conf, cls in dets:
                 x1, y1, x2, y2 = [coord.item() for coord in xyxy]
                 x1 *= scale_x
                 x2 *= scale_x
                 y1 *= scale_y
                 y2 *= scale_y
-                xyxy = [int(x1), int(y1), int(x2), int(y2)]
-                draw_ctx.rectangle(xyxy, outline="red", width=3)
+                boxes.append([x1, y1, x2, y2])
+                xyxy_int = [int(x1), int(y1), int(x2), int(y2)]
+                draw_ctx.rectangle(xyxy_int, outline="red", width=3)
                 class_idx = int(cls.item())
+                pred_classes.append(class_idx)
                 class_name = self.resolve_label_index(class_idx)
                 try:
                     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size=14)
                 except OSError:
                     font = ImageFont.load_default()
-                draw_ctx.text((xyxy[0], xyxy[1] - 10), f"{class_name}, {conf.item():.2f}", fill="white", font=font)
+                draw_ctx.text((xyxy_int[0], xyxy_int[1] - 10), f"{class_name}, {conf.item():.2f}", fill="white", font=font)
+
+            boxes_tensor = ch.tensor(boxes, dtype=ch.float32)
+
+            if gt_bbox is not None and len(boxes_tensor) > 0:
+                gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                ious = box_iou(boxes_tensor, gt_box_tensor).squeeze(1)
+                best_idx = ious.argmax().item()
+                best_iou = ious[best_idx].item()
+                best_class = pred_classes[best_idx]
+                closest_confidence = dets[best_idx][-2].item()
+                target_pred_exists = (best_iou > 0.5 and best_class == target)
+                untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
+            else:
+                target_pred_exists = target in pred_classes
+                untarget_pred_not_exists = all(cls != untarget for cls in pred_classes)
+        else:
+            target_pred_exists = False
+            untarget_pred_not_exists = True
+
         draw.save(path)
 
-        pred_classes = dets[:, -1].tolist() if dets is not None else []
-
-        target_pred_exists = target.item() in pred_classes if target is not None else False
-        untarget_pred_not_exists = untarget.item() not in pred_classes if untarget is not None else True
+        if result_dict:
+            return_result = {
+                "closest_class": best_class if gt_bbox is not None else None,
+                "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
+                "closest_confidence": closest_confidence if gt_bbox is not None else None,
+            }
+            meets_criteria = (
+                (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
+                (not is_targeted and untarget_pred_not_exists)
+            )
+            return meets_criteria, return_result
 
         if is_targeted:
-            return target_pred_exists and (untarget_pred_not_exists if untarget is not None else True)
-        else:
-            return untarget_pred_not_exists
+            if target_pred_exists and (untarget is None or untarget_pred_not_exists):
+                return True
+        elif not is_targeted and untarget_pred_not_exists:
+            return True
+        return False
 
     def preprocess_input(self, image_path: str):
         image = Image.open(image_path).convert("RGB")
