@@ -141,7 +141,8 @@ class Detectron2Detector(BaseDetector):
             best_class = None
             best_iou = None
             if gt_bbox is not None:
-                v.draw_box(gt_bbox, edge_color='green')
+                # FIXME: makeoption to draw gt bbox
+                # v.draw_box(gt_bbox, edge_color='green')
 
                 gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
                 pred_boxes = instances.pred_boxes
