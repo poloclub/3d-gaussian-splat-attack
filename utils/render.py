@@ -242,7 +242,7 @@ def run(cfg : DictConfig) -> None:
         render_pkg = render(cam, combined_gaussians, pipe, bg)
         concat_renders.append(render_pkg["render"]) 
 
-        img_path = f"renders/nyc_block_0_9_adv/{it}.png"
+        img_path = f"renders/nyc_block_maserati/{it}.png"
         cr = concat_renders[0]
         preds_path = "preds"
         Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
