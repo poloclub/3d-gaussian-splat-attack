@@ -550,7 +550,8 @@ def run(cfg : DictConfig) -> None:
                         target=target,
                         untarget=untarget,
                         is_targeted=True,
-                        threshold=attack_conf_thresh
+                        threshold=attack_conf_thresh,
+                        gt_bbox = gt_bboxes[0]
                     )
                 if not batch_mode and success:
                     viewpoint_stack.pop(0)
