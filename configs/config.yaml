@@ -48,7 +48,7 @@ start_cam: 0
 end_cam: 1
 add_cams: 1
 shift_amount: 0.15
-attack_conf_thresh: 0.3
+attack_conf_thresh: 0.7
 batch_mode: false
 
 # Additional debug flags
