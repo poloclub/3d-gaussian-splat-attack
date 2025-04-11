@@ -16,7 +16,7 @@ from scene import Scene, GaussianModel
 from gaussian_renderer import render
 from scene.cameras import Camera  
 from arguments import GroupParams
-from edit_object_removal import points_inside_convex_hull
+# from edit_object_removal import points_inside_convex_hull
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 
 select_thresh = 0.5 # selected threshold for the gaussian group
@@ -393,7 +393,7 @@ def run(cfg : DictConfig) -> None:
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
 
     # single camera or range of cameras
-    viewpoint_stack = scene.getTrainCameras().copy()[start_cam:end_cam] 
+    viewpoint_stack = scene.getTrainCameras().copy()#[start_cam:end_cam] 
     
 
     for i in range(1, add_cams):
@@ -464,6 +464,10 @@ def run(cfg : DictConfig) -> None:
 
         print(f"Iteration: {it}, Loss: {loss}")
         loss.backward(retain_graph=True)
+        # Track CUDA memory usage
+        # allocated_memory = torch.cuda.memory_allocated() / (1024 ** 2)  # Convert to MB
+        # reserved_memory = torch.cuda.memory_reserved() / (1024 ** 2)  # Convert to MB
+        # print(f"Iteration {it}: Allocated Memory: {allocated_memory:.2f} MB, Reserved Memory: {reserved_memory:.2f} MB")
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = cfg.epsilon
@@ -520,18 +524,21 @@ def run(cfg : DictConfig) -> None:
                         target=target,
                         untarget=untarget,
                         is_targeted=True,
-                        threshold=attack_conf_thresh
+                        threshold=attack_conf_thresh,
+                        gt_bbox=gt_bboxes[j]
                     )
                     successes.append(success)
                 num_successes = sum(successes)
                 print(f"Successes: {num_successes}/{len(viewpoint_stack)}")
                 if num_successes == len(viewpoint_stack):
                     print ("All camera viewpoints attacked successfully")
+                    print("saving gaussians")
+                    combined_gaussians.save_ply(os.path.join("output", f"point_cloud_{it}.ply"))                    
                     break
                 #FIXME - add as param
-                if num_successes >= 1:
-                    print("saving gaussians")
-                    combined_gaussians.save_ply(os.path.join("output/industrial_park", f"point_cloud_{it}.ply"))
+                # if num_successes >= 1:
+                #     print("saving gaussians")
+                #     combined_gaussians.save_ply(os.path.join("output/industrial_park", f"point_cloud_{it}.ply"))
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
