@@ -427,13 +427,10 @@ def run(cfg : DictConfig) -> None:
         pil_img_bw = pil_img.convert('L')
         bw_tresh = 20
         pil_img_bw = pil_img_bw.point(lambda p: p > bw_tresh and 255)
-        # pil_img_bw = PIL.ImageOps.invert(pil_img_bw)
-        bbox = pil_img_bw.getbbox()
-        
+        bbox = pil_img_bw.getbbox()        
         pil_img.save(img_path)
 
         rendered_img_input = detector.preprocess_input(img_path)
-        # bbox = get_instances_bboxes(model, rendered_img_input, target = target.detach().cpu().numpy(), threshold=0.2)
         bboxes.append(bbox)
 
         draw = PIL.ImageDraw.Draw(pil_img_bw)
@@ -533,7 +530,7 @@ def run(cfg : DictConfig) -> None:
                 if num_successes == len(viewpoint_stack):
                     print ("All camera viewpoints attacked successfully")
                     print("saving gaussians")
-                    combined_gaussians.save_ply(os.path.join("output", f"point_cloud_{it}.ply"))                    
+                    combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))                    
                     break
                 #FIXME - add as param
                 # if num_successes >= 1:
