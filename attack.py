@@ -8,6 +8,7 @@ import subprocess
 import numpy as np
 from tqdm import tqdm
 import PIL
+import torch.nn as nn
 from PIL import Image, ImageDraw
 from random import randint
 from omegaconf import DictConfig, OmegaConf
@@ -449,22 +450,16 @@ def run(cfg : DictConfig) -> None:
                 render_pkg = render(cam, gaussians, pipe, bg)
                 renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-           
             loss = detector.infer(renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
         else:
             cam = viewpoint_stack[0]
             render_pkg = render(cam, gaussians, pipe, bg)
             renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-
             loss = detector.infer(renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
 
         print(f"Iteration: {it}, Loss: {loss}")
         loss.backward(retain_graph=True)
-        # Track CUDA memory usage
-        # allocated_memory = torch.cuda.memory_allocated() / (1024 ** 2)  # Convert to MB
-        # reserved_memory = torch.cuda.memory_reserved() / (1024 ** 2)  # Convert to MB
-        # print(f"Iteration {it}: Allocated Memory: {allocated_memory:.2f} MB, Reserved Memory: {reserved_memory:.2f} MB")
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = cfg.epsilon
@@ -482,6 +477,7 @@ def run(cfg : DictConfig) -> None:
             # gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
             # gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
+
             combined_gaussians = copy.deepcopy(gaussians)
             combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
             combined_gaussians.concat_setup("features_dc", gaussians_original._features_dc, True)
@@ -532,10 +528,6 @@ def run(cfg : DictConfig) -> None:
                     print("saving gaussians")
                     combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))                    
                     break
-                #FIXME - add as param
-                # if num_successes >= 1:
-                #     print("saving gaussians")
-                #     combined_gaussians.save_ply(os.path.join("output/industrial_park", f"point_cloud_{it}.ply"))
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
@@ -560,14 +552,10 @@ def run(cfg : DictConfig) -> None:
                 if not batch_mode and success:
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
-                    # print('saving gaussians')
-                    # combined_gaussians.save_ply(os.path.join("output/nyc_block", f"combined_point_cloud_{it}.ply"))                        
-                    # gaussians.save_ply(os.path.join("output/nyc_block", f"single_obj_point_cloud_{it}.ply"))
                     if len(viewpoint_stack) == 0:
                         print ("All camera viewpoints attacked successfully")
-                        # print("saving gaussians")
-                        # FIXME - hardcoded directory
-                        # combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
+                        print("saving gaussians")
+                        combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))
                         break
                 print(f"Success: {success}")
         del combined_gaussians
