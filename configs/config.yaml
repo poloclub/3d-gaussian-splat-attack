@@ -14,7 +14,7 @@ resolution: 1
 sh_degree: 3
 train_split: false
 white_background: false
-no_groups: false
+no_groups: true
 combine_splats: true
 
 # Optimization parameters
