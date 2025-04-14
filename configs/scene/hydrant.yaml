@@ -1,0 +1,8 @@
+name: hydrant
+source_path: "assets/hydrant"
+model_path: "assets/hydrant"
+combine_splats_paths: ["output/hydrant.ply"]
+cam_indices: [0]
+target: 'person'
+untarget: 'fire_hydrant'
+detector_name: detectron2 #yolov3 #yolov8 
