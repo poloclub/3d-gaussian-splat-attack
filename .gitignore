@@ -184,3 +184,11 @@ detectors/yolov3-legacy/inference/output/
 # If you accidentally modified or downloaded pretrained models inside
 detectors/yolov3-legacy/weights/
 detectors/yolov3-legacy/*.weights
+*.weights
+*.pth
+*.pt
+points3D.txt
+yolov3.cfg
+yolov8n.yaml
+cameras.txt
+images.txt
