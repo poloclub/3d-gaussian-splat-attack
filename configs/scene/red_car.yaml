@@ -1,0 +1,9 @@
+name: maserati
+source_path: "assets/nyc_block"
+model_path: "asesets/nyc_block"
+combine_splats_paths: ["output/nyc_red_car.ply", "output/nyc_block_cycles_shadow.ply"]
+cam_indices: [0]
+is_targeted: False
+target: 'train'
+untarget: 'car'
+detector_name: detectron2 #yolov3 #yolov8 
