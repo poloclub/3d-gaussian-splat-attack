@@ -263,7 +263,8 @@ def run(cfg : DictConfig) -> None:
     shift_amount = cfg.shift_amount
     attack_conf_thresh = cfg.attack_conf_thresh
     batch_mode = cfg.batch_mode  # Set this to False for single camera mode
-
+    batch_size = cfg.batch_size # only used if batch_mode is True
+    is_targeted = cfg.scene.is_targeted
 
 
     # cleanup render and preds directories
@@ -411,6 +412,8 @@ def run(cfg : DictConfig) -> None:
         viewpoint_stack.append(camera)
 
     total_views = len(viewpoint_stack)
+    # Create a pending list of cameras for batching
+    pending_views = viewpoint_stack.copy()
 
     # get benign render bboxes - would be better if you could SOLO render the target!
     # for each benign render, get the bbox w/ detection of target class.
@@ -441,16 +444,21 @@ def run(cfg : DictConfig) -> None:
         bbox = np.expand_dims(np.array(bbox), axis=0)
 
     gt_bboxes = np.array(bboxes)
+    pending_bboxes = gt_bboxes.copy()
 
     for it in range(1500):
         renders = []
         
         if batch_mode:
-            for cam in viewpoint_stack:
+            # Select current batch
+            current_batch = pending_views[:cfg.batch_size]
+            current_bboxes = pending_bboxes[:cfg.batch_size]
+            renders = []
+            for cam in current_batch:
                 render_pkg = render(cam, gaussians, pipe, bg)
                 renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-            loss = detector.infer(renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
+            loss = detector.infer(renders, target=target, bboxes=current_bboxes, batch_size=len(current_batch))
         else:
             cam = viewpoint_stack[0]
             render_pkg = render(cam, gaussians, pipe, bg)
@@ -459,7 +467,7 @@ def run(cfg : DictConfig) -> None:
             loss = detector.infer(renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
 
         print(f"Iteration: {it}, Loss: {loss}")
-        loss.backward(retain_graph=True)
+        loss.backward()
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = cfg.epsilon
@@ -489,7 +497,7 @@ def run(cfg : DictConfig) -> None:
 
             concat_renders = []
             if batch_mode:
-                for cam in viewpoint_stack:
+                for cam in current_batch:
                     render_pkg = render(cam, combined_gaussians, pipe, bg)
                     concat_renders.append(render_pkg["render"])
             else:
@@ -499,7 +507,7 @@ def run(cfg : DictConfig) -> None:
 
             if batch_mode:
                 successes = []
-                for j, cam in enumerate(viewpoint_stack):
+                for j, cam in enumerate(current_batch):
                     img_path = f"renders/render_concat_{j}.png"
                     cr = concat_renders[j]
                     preds_path = "preds"
@@ -516,18 +524,24 @@ def run(cfg : DictConfig) -> None:
                         path=os.path.join(preds_path, f'render_it{it}_c{j}.png'),
                         target=target,
                         untarget=untarget,
-                        is_targeted=True,
+                        is_targeted=is_targeted,
                         threshold=attack_conf_thresh,
-                        gt_bbox=gt_bboxes[j]
+                        gt_bbox=current_bboxes[j]
                     )
                     successes.append(success)
                 num_successes = sum(successes)
-                print(f"Successes: {num_successes}/{len(viewpoint_stack)}")
-                if num_successes == len(viewpoint_stack):
-                    print ("All camera viewpoints attacked successfully")
-                    print("saving gaussians")
-                    combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))                    
-                    break
+                print(f"Successes: {num_successes}/{len(current_batch)}")
+                if num_successes == len(current_batch)-1 or num_successes == len(current_batch):
+                    print("Current batch attacked successfully")
+                    # Remove the successful batch from pending lists
+                    pending_views = pending_views[len(current_batch):]
+                    pending_bboxes = pending_bboxes[len(current_batch):]
+                    # If no more cameras remain, finish the attack
+                    if len(pending_views) == 0:
+                        print("All camera viewpoints attacked successfully")
+                        print("saving gaussians")
+                        combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))
+                        break
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
@@ -545,7 +559,7 @@ def run(cfg : DictConfig) -> None:
                         path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
                         target=target,
                         untarget=untarget,
-                        is_targeted=True,
+                        is_targeted=is_targeted,
                         threshold=attack_conf_thresh,
                         gt_bbox = gt_bboxes[0]
                     )
