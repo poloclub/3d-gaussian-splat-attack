@@ -264,6 +264,7 @@ def run(cfg : DictConfig) -> None:
     attack_conf_thresh = cfg.attack_conf_thresh
     batch_mode = cfg.batch_mode  # Set this to False for single camera mode
     batch_size = cfg.batch_size # only used if batch_mode is True
+    is_targeted = cfg.scene.is_targeted
 
 
     # cleanup render and preds directories
@@ -523,14 +524,14 @@ def run(cfg : DictConfig) -> None:
                         path=os.path.join(preds_path, f'render_it{it}_c{j}.png'),
                         target=target,
                         untarget=untarget,
-                        is_targeted=True,
+                        is_targeted=is_targeted,
                         threshold=attack_conf_thresh,
                         gt_bbox=current_bboxes[j]
                     )
                     successes.append(success)
                 num_successes = sum(successes)
                 print(f"Successes: {num_successes}/{len(current_batch)}")
-                if num_successes == len(current_batch):
+                if num_successes == len(current_batch)-1 or num_successes == len(current_batch):
                     print("Current batch attacked successfully")
                     # Remove the successful batch from pending lists
                     pending_views = pending_views[len(current_batch):]
@@ -558,7 +559,7 @@ def run(cfg : DictConfig) -> None:
                         path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
                         target=target,
                         untarget=untarget,
-                        is_targeted=True,
+                        is_targeted=is_targeted,
                         threshold=attack_conf_thresh,
                         gt_bbox = gt_bboxes[0]
                     )
