@@ -39,6 +39,8 @@ class Yolov8Detector(BaseDetector):
         self.model = model
 
     def infer(self, x, target, bboxes, batch_size=1):
+        if target.ndim == 1 and target.shape[0] == 1 and batch_size > 1:
+            target = target.repeat(batch_size)        
         self.model.model.train()
         if isinstance(bboxes, np.ndarray):
             bboxes = ch.tensor(bboxes, dtype=ch.float32)
