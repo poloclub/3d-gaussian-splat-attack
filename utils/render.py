@@ -49,7 +49,7 @@ def run(cfg : DictConfig) -> None:
     dataset.device = cfg.device
     dataset.no_groups = cfg.no_groups
     if dataset.no_groups:
-        raise NotImplementedError("no_goups is not supported in rendering and will be ignored.")
+        log.warning("no_groups is not supported in rendering and will be ignored.")
 
     # Initialize optimization parameters
     opt = GroupParams()
@@ -242,7 +242,8 @@ def run(cfg : DictConfig) -> None:
         render_pkg = render(cam, combined_gaussians, pipe, bg)
         concat_renders.append(render_pkg["render"]) 
 
-        img_path = f"renders/nyc_block_maserati/{it}.png"
+        # img_path = f"renders/nyc_block_maserati/{it}.png"   
+        img_path = f"renders/nyc_block_masserati_test/{it}.png"
         cr = concat_renders[0]
         preds_path = "preds"
         Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
