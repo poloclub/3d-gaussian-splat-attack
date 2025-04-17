@@ -29,6 +29,7 @@ MANIFEST
 assets/*/*/*.png
 *.DS_Store
 results/*
+multirun/*
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
