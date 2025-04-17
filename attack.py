@@ -262,6 +262,7 @@ def run(cfg : DictConfig) -> None:
     start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
     shift_amount = cfg.shift_amount
     attack_conf_thresh = cfg.attack_conf_thresh
+    max_iters = cfg.max_iters
     batch_mode = cfg.batch_mode  # Set this to False for single camera mode
     batch_size = cfg.batch_size # only used if batch_mode is True
     is_targeted = cfg.scene.is_targeted
@@ -447,7 +448,7 @@ def run(cfg : DictConfig) -> None:
     gt_bboxes = np.array(bboxes)
     pending_bboxes = gt_bboxes.copy()
 
-    for it in range(1500):
+    for it in range(max_iters):
         renders = []
         
         if batch_mode:
@@ -541,7 +542,7 @@ def run(cfg : DictConfig) -> None:
                     if len(pending_views) == 0:
                         print("All camera viewpoints attacked successfully")
                         print("saving gaussians")
-                        combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))
+                        gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_adv_{it}_{cfg.detector_name}.ply"))
                         break
             else:
                 img_path = f"renders/render_concat_0.png"
@@ -570,7 +571,7 @@ def run(cfg : DictConfig) -> None:
                     if len(viewpoint_stack) == 0:
                         print ("All camera viewpoints attacked successfully")
                         print("saving gaussians")
-                        combined_gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_{it}.ply"))
+                        gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_adv_{it}_{cfg.detector_name}.ply"))
                         break
                 print(f"Success: {success}")
         del combined_gaussians
