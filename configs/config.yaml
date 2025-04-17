@@ -2,6 +2,8 @@ defaults:
   - scene: maserati
   - _self_
 
+cam_path: "nyc_block"
+splat_asset_path: "output"
 data_device: "cuda"
 device: "7"
 eval: false
@@ -59,8 +61,13 @@ debug: false
 
 sysconfig:
   output_path: results/${scene.name}
-  log_dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  #log_dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  log_dir: ./results/${scene.name}/${now:%Y-%m-%d}/${cam_path}_${scene.target_splat}_${scene.detector_name}_${now:%H-%M}
 
 hydra:
   run:
-    dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+    # dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+    dir: ./results/${scene.name}/${now:%Y-%m-%d}/${cam_path}_${scene.target_splat}_${scene.detector_name}_${now:%H-%M}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${cam_path}_${scene.target_splat}_${scene.detector_name}

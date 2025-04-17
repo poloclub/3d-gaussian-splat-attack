@@ -1,7 +1,8 @@
 name: maserati
-source_path: "assets/nyc_block"
-model_path: "asesets/nyc_block"
-combine_splats_paths: ["output/nyc_maserati.ply", "output/nyc_block_cycles_shadow.ply"]
+source_path: ./assets/${cam_path} 
+model_path: ./assets/${cam_path}
+target_splat : "nyc_maserati.ply"
+background_splat : "nyc_block_cycles_shadow.ply"
 cam_indices: [0]
 is_targeted: False
 target: 'train'
