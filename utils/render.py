@@ -120,7 +120,9 @@ def run(cfg : DictConfig) -> None:
         gaussians.training_setup(opt)
         scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
-        ply_paths = cfg.scene.combine_splats_paths
+        ply_paths = [os.path.join(cfg.splat_asset_path,cfg.scene.target_splat), 
+                     os.path.join(cfg.splat_asset_path,cfg.scene.background_splat)]
+
         if ply_paths is None or len(ply_paths) < 2:
             raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")                     
 
@@ -243,7 +245,7 @@ def run(cfg : DictConfig) -> None:
         concat_renders.append(render_pkg["render"]) 
 
         # img_path = f"renders/nyc_block_maserati/{it}.png"   
-        img_path = f"renders/nyc_block_masserati_test/{it}.png"
+        img_path = f"renders/nyc_block_car_test/{it}.png"
         cr = concat_renders[0]
         preds_path = "preds"
         Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
