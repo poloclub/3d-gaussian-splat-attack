@@ -5,6 +5,6 @@ target_splat : "nyc_maserati.ply"
 background_splat : "nyc_block_cycles_shadow.ply"
 cam_indices: [0]
 is_targeted: False
-target: 'train'
+target: 'person'
 untarget: 'car'
 detector_name: detectron2 #yolov3 #yolov8 
