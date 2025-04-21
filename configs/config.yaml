@@ -46,11 +46,12 @@ scaling_lr: 0.005
 epsilon: 5.0
 alpha: 0.5
 selected_obj_ids: [117]     # example list
+shuffle_cams: false
 start_cam: 0
 end_cam: 1
 add_cams: 1
 shift_amount: 0.15
-attack_conf_thresh: 0.7
+attack_conf_thresh: 0.5
 batch_mode: false
 batch_size: 5
 max_iters: 100
