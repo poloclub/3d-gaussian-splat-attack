@@ -152,8 +152,8 @@ class Detectron2Detector(BaseDetector):
                     ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze(1)
                     best_idx = ious.argmax().item()
                     best_iou = ious[best_idx].item()
-                    best_class = instances.pred_classes[best_idx].item()
-                    closest_confidence = instances.scores[best_idx].item()
+                    best_class = instances.pred_classes[best_idx].item() if best_iou > 0.5 else None
+                    closest_confidence = instances.scores[best_idx].item() if best_iou > 0.5 else None
                     target_pred_exists = (best_iou > 0.5 and best_class == target)
                 else:
                     target_pred_exists = False
@@ -169,7 +169,7 @@ class Detectron2Detector(BaseDetector):
                     ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze(1)
                     best_idx = ious.argmax().item()
                     best_iou = ious[best_idx].item()
-                    best_class = instances.pred_classes[best_idx].item()
+                    best_class = instances.pred_classes[best_idx].item() if best_iou > 0.5 else None
                     untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
                 else:
                     untarget_pred_not_exists = True
@@ -184,15 +184,17 @@ class Detectron2Detector(BaseDetector):
         PIL.Image.fromarray(pred).save(path)
 
         if result_dict:
-            return_result = {
-                "closest_class": best_class if gt_bbox is not None and len(pred_boxes) > 0 else None,
-                "closest_class_name": best_class_name if gt_bbox is not None and len(pred_boxes) > 0 else None,
-                "closest_confidence": closest_confidence if gt_bbox is not None and len(pred_boxes) > 0 else None,
-            }
             meets_criteria = (
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
+            return_result = {
+                "closest_class": best_class if gt_bbox is not None else None,
+                "closest_class_name": best_class_name if gt_bbox is not None and len(pred_boxes) > 0 else None,
+                "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "untarget_pred_not_exists": untarget_pred_not_exists,
+                "target_pred_exists": target_pred_exists,
+            }
             return meets_criteria, return_result
 
         if is_targeted:

@@ -213,8 +213,8 @@ class Yolov8Detector(BaseDetector):
                 ious = box_iou(boxes_tensor, gt_box_tensor).squeeze(1)
                 best_idx = ious.argmax().item()
                 best_iou = ious[best_idx].item()
-                best_class = pred_classes[best_idx]
-                closest_confidence = dets[best_idx][-2].item()
+                best_class = pred_classes[best_idx] if best_iou > 0.5 else None
+                closest_confidence = dets[best_idx][-2].item() if best_iou > 0.5 else None
                 target_pred_exists = (best_iou > 0.5 and best_class == target)
                 untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
             else:
@@ -227,15 +227,17 @@ class Yolov8Detector(BaseDetector):
         draw.save(path)
 
         if result_dict:
-            return_result = {
-                "closest_class": best_class if gt_bbox is not None else None,
-                "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
-                "closest_confidence": closest_confidence if gt_bbox is not None else None,
-            }
             meets_criteria = (
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
+            return_result = {
+                "closest_class": best_class if gt_bbox is not None else None,
+                "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
+                "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "untarget_pred_not_exists": untarget_pred_not_exists,
+                "target_pred_exists": target_pred_exists,
+            }
             return meets_criteria, return_result
 
         if is_targeted:

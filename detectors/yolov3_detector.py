@@ -42,7 +42,7 @@ class Yolov3Detector(BaseDetector):
             x = x.unsqueeze(0)
         x = x.to(dtype=ch.float32)
 
-        def letterbox(img, new_shape=(960, 960), color=(114, 114, 114)):
+        def letterbox(img, new_shape=(640, 640), color=(114, 114, 114)):
             B, C, H, W = img.shape
             new_h, new_w = new_shape
             scale = min(new_h / H, new_w / W)
@@ -58,8 +58,8 @@ class Yolov3Detector(BaseDetector):
             img_padded = ch.nn.functional.pad(img_resized, (pad_left, pad_right, pad_top, pad_bottom), value=color[0]/255.0)
             return img_padded, scale, pad_left, pad_top
 
-        x, scale, pad_left, pad_top = letterbox(x, new_shape=(960, 960))
-        new_w, new_h = 960, 960
+        x, scale, pad_left, pad_top = letterbox(x, new_shape=(640, 640))
+        new_w, new_h = 640, 640
 
         boxes = bboxes.clone()
         boxes = boxes * ch.tensor([scale, scale, scale, scale], device=boxes.device)
@@ -160,8 +160,8 @@ class Yolov3Detector(BaseDetector):
                 ious = box_iou(boxes_tensor, gt_box_tensor).squeeze(1)
                 best_idx = ious.argmax().item()
                 best_iou = ious[best_idx].item()
-                best_class = pred_classes[best_idx]
-                closest_confidence = dets[best_idx][-2].item()
+                best_class = pred_classes[best_idx] if best_iou > 0.5 else None
+                closest_confidence = dets[best_idx][-2].item() if best_iou > 0.5 else None
                 target_pred_exists = (best_iou > 0.5 and best_class == target)
                 untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
             else:
@@ -174,15 +174,17 @@ class Yolov3Detector(BaseDetector):
         draw.save(path)
 
         if result_dict:
-            return_result = {
-                "closest_class": best_class if gt_bbox is not None else None,
-                "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
-                "closest_confidence": closest_confidence if gt_bbox is not None else None,
-            }
             meets_criteria = (
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
+            return_result = {
+                "closest_class": best_class if gt_bbox is not None else None,
+                "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
+                "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "untarget_pred_not_exists": untarget_pred_not_exists,
+                "target_pred_exists": target_pred_exists,
+            }
             return meets_criteria, return_result
 
         if is_targeted:
