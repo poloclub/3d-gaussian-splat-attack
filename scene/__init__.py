@@ -63,6 +63,7 @@ class Scene:
                 json.dump(json_cams, file)
 
         if shuffle:
+            random.seed(42)
             random.shuffle(scene_info.train_cameras)  # Multi-res consistent random shuffling
             random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
 
