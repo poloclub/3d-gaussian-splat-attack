@@ -16,6 +16,10 @@
 ![DAGGER Attack](docs/dagger_crown_jewel.png)
 
 #### DAGGER generalizes projected gradient descent attack by exploiting the differentiability of the 3DGS scene representation to manipulate splat color, scaling, translation, rotation, or alpha attributes to fool object detectors.
+---
+
+### [Demo Videos](docs/demos.md)
+---
 
 ## Credits
 Led by [Matthew Hull](https://matthewdhull.github.io), 3D Gaussian Vulnerabilities is a result of a collaboration between the [Polo Club of Data Science](https://poloclub.github.io) at Georgia Tech and [Technology Innovation Institute](https://www.tii.ae). 3DGaussian Splat Vulnerabilities has been created by [Matthew Hull](https://matthewdhull.github.io), [Haoyang Yang](https://alexanderyang.me), [Pratham Mehta](https://twixupmysleeve.wixsite.com/home), [Mansi Phute](https://mphute.github.io), [Aeree Cho](https://aereeeee.github.io), Haoran Wang, [Matthew Lau](https://sites.google.com/view/matthewlauende/home), [Wenke Lee](http://wenke.gtisc.gatech.edu), Willian Lunardi, Martin Andreoni, and [Duen Horng Chau](https://poloclub.github.io/polochau/).
