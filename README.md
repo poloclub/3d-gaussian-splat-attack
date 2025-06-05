@@ -20,7 +20,7 @@
 ## Credits
 Led by [Matthew Hull](https://matthewdhull.github.io), 3D Gaussian Vulnerabilities is a result of a collaboration between the [Polo Club of Data Science](https://poloclub.github.io) at Georgia Tech and [Technology Innovation Institute](https://www.tii.ae). 3DGaussian Splat Vulnerabilities has been created by [Matthew Hull](https://matthewdhull.github.io), [Haoyang Yang](https://alexanderyang.me), [Pratham Mehta](https://twixupmysleeve.wixsite.com/home), [Mansi Phute](https://mphute.github.io), [Aeree Cho](https://aereeeee.github.io), Haoran Wang, [Matthew Lau](https://sites.google.com/view/matthewlauende/home), [Wenke Lee](http://wenke.gtisc.gatech.edu), Willian Lunardi, Martin Andreoni, and [Duen Horng Chau](https://poloclub.github.io/polochau/).
 
-# Citation
+## Citation
 To learn more about 3D Gaussian Splat Vulnerabilities, please read our [paper](https://arxiv.org/pdf/2506.00280), presented at CVPR 2025 Workshop on Neural Fields Beyond Conventional Cameras:
 ```latex
 @misc{hull20253dgsvulnerabilities,
