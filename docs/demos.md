@@ -1,11 +1,10 @@
 ## Demo Videos
-[Demo Video](videos/demo-adv-car-orbit.mp4)
 
-Or to embed the video (note: may not work in all markdown viewers):
+1. CLOAK'd stop sign and road textures
 
-```html
-<video controls width="600">
-    <source src="videos/demo-adv-car-orbit.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-</video>
-```
+https://github.com/user-attachments/assets/6d7cabdf-826e-453c-876d-a64fd8865a05
+
+2. Hidden speed limit
+
+https://github.com/user-attachments/assets/d512337b-96bb-4416-9af6-7b53504f92d1
+
