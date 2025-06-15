@@ -7,6 +7,7 @@ import torch
 import subprocess
 import numpy as np
 from tqdm import tqdm
+import time 
 import PIL
 from PIL import Image, ImageDraw
 from random import randint
@@ -19,6 +20,7 @@ from arguments import GroupParams
 # from edit_object_removal import points_inside_convex_hull
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 import logging
+import json
 log = logging.getLogger(__name__)
 
 select_thresh = 0.5 # selected threshold for the gaussian group
@@ -174,27 +176,20 @@ def run(cfg : DictConfig) -> None:
     viewpoint_stack = scene.getTrainCameras().copy()[start_cam:end_cam] 
     
 
-    # for i in range(1, add_cams):
-
-    #     # make a new camera with a view that we choose. 
-    #     camera = copy.deepcopy(viewpoint_stack[0])
-    #     # Shift left
-    #     # T = camera.T
-    #     # T[0] += shift_amount * i
-    #     # camera.transform(T)
-    #     # yaw right 
-    #     camera.yaw(7*i)
-
-    #     viewpoint_stack.append(camera)
-
     total_views = len(viewpoint_stack)
 
     # get benign render bboxes - would be better if you could SOLO render the target!
     # for each benign render, get the bbox w/ detection of target class.
     bboxes = []
-    for i, cam in enumerate(tqdm(viewpoint_stack, desc="Rendering GT bboxes...", unit="camera")):
+    timestamp = time.time()
+    time_str = time.strftime("%Y/%m/%d/%H/%M", time.gmtime(timestamp))
+    render_time_dir = os.path.join("renders", time_str)
+    os.makedirs(render_time_dir, exist_ok=True)
+
+    for i, cam in enumerate(tqdm(viewpoint_stack, desc="Calculating GT bboxes...", unit="camera")):
         render_pkg = render(cam, gaussians, pipe, torch.tensor([0,0,0],dtype=torch.float32, device="cuda")) # always use black background for detection
-        img_path = f"renders/render_{i}.png"
+
+        img_path = os.path.join(render_time_dir, f"render_{i}.png")
         np_img = (torch.clamp(render_pkg["render"], min=0, max=1.0) * 255) \
                         .byte() \
                         .permute(1, 2, 0) \
@@ -217,11 +212,13 @@ def run(cfg : DictConfig) -> None:
         draw = PIL.ImageDraw.Draw(pil_img_bw)
         draw.rectangle(bbox, outline="red", width=3)
         draw.text((bbox[0], bbox[1] - 10), "object", fill="red")
-        pil_img_bw.save(f'renders/bw/bbox_render_{i}.jpg')    
+        # pil_img_bw.save(f'renders/bw/bbox_render_{i}.jpg')    
         bbox = np.expand_dims(np.array(bbox), axis=0)
 
     gt_bboxes = np.array(bboxes)    
 
+
+    coco_results = []
 
     for it in tqdm(range(0, total_views), desc="Rendering", unit="it"):
         renders = []
@@ -244,34 +241,57 @@ def run(cfg : DictConfig) -> None:
         render_pkg = render(cam, combined_gaussians, pipe, bg)
         concat_renders.append(render_pkg["render"]) 
 
-        # img_path = f"renders/nyc_block_maserati/{it}.png"   
-        img_path = f"renders/nyc_block_car_test/{it}.png"
+        if cfg.write_images:
+            img_path = os.path.join(render_time_dir, f"render_{it}.png")
+            np_img = (torch.clamp(render_pkg["render"], min=0, max=1.0) * 255) \
+                            .byte() \
+                            .permute(1, 2, 0) \
+                            .contiguous() \
+                            .cpu() \
+                            .numpy() 
+            pil_img = Image.fromarray(np_img)
+            pil_img.save(img_path)
+        
         cr = concat_renders[0]
         preds_path = "preds"
-        Image.fromarray((torch.clamp(cr, min=0, max=1.0) * 255)
-                        .byte()
-                        .permute(1, 2, 0)
-                        .contiguous()
-                        .cpu()
-                        .numpy()).save(img_path)
+        preds_time_dir = os.path.join(preds_path, time_str)
+        os.makedirs(preds_time_dir, exist_ok=True)        
+        # Skip disk I/O and use tensor directly for prediction
+        # cr has shape [C, H, W] floats in [0,1]; pass directly and let detector scale and convert to uint8
+        image_input = cr.clamp(0,1).cpu()
 
-        rendered_img_input = detector.preprocess_input(img_path)
         success, result = detector.predict_and_save(
-                image=cr,
-                path=os.path.join(preds_path, f'render_c{total_views-len(viewpoint_stack)}.png'),
-                target=target,
-                untarget=None,
-                is_targeted=True,
-                threshold=attack_conf_thresh,
-                gt_bbox = gt_bboxes[it],
-                result_dict=True)
+            image=image_input,
+            path=os.path.join(preds_time_dir, f'render_c{total_views-len(viewpoint_stack)}.png'),
+            target=target,
+            untarget=None,
+            is_targeted=True,
+            threshold=attack_conf_thresh,
+            gt_bbox=gt_bboxes[it],
+            result_dict=True,
+            image_id=it
+        )
+        # COCO results: accumulate all detections
+        if "detections" in result and isinstance(result["detections"], list):
+            coco_results.extend(result["detections"])
         closest_class = result['closest_class_name'] if result['closest_class_name'] is not None else "None"
         confidence_str = f"{result['closest_confidence']:.4f}" if isinstance(result['closest_confidence'], (float, int)) else "None"
-        log.info(f"[cam {it}] success: {success}, max_iou_pred: {closest_class}, conf: {confidence_str}")
+        # structured JSON log for each camera
+        structured = {
+            "cam": it,
+            "detections": result["detections"],
+            "closest_class": closest_class,
+            "closest_confidence": confidence_str
+        }
+        log.info(json.dumps(structured))
         
         viewpoint_stack.pop(0)
         if len(viewpoint_stack) == 0:
-            print ("finished rendering all cameras")                  
+            print ("finished rendering all cameras")
+            # Write COCO results to JSON
+            coco_json_path = os.path.join(render_time_dir, "detections_coco.json")
+            with open(coco_json_path, "w") as f:
+                json.dump(coco_results, f)
 
 if __name__ == "__main__":
     run()
