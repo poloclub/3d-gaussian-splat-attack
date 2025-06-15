@@ -125,11 +125,13 @@ class Yolov5Detector(BaseDetector):
             scale_y = orig_h / resized_h
 
             yolo_wrapper = YOLO("pretrained-models/yolov5/yolov5s.pt", task="detect")
-            results = yolo_wrapper(img_tensor, verbose=False)
+            results = yolo_wrapper(img_tensor, conf=threshold, verbose=False)
             dets = results[0].boxes.data if results and results[0].boxes is not None else None
 
         draw = Image.fromarray(image_np.copy())
         pred_classes = []
+        pred_confs = []
+        pred_boxes = []
         closest_confidence = None
         best_class = None
         best_iou = None
@@ -158,6 +160,8 @@ class Yolov5Detector(BaseDetector):
                 draw_ctx.rectangle(xyxy_int, outline="red", width=3)
                 class_idx = int(cls.item())
                 pred_classes.append(class_idx)
+                pred_confs.append(conf.item())
+                pred_boxes.append((x1, y1, x2, y2))
                 class_name = self.resolve_label_index(class_idx)
                 try:
                     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size=14)
@@ -190,7 +194,18 @@ class Yolov5Detector(BaseDetector):
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
+            # assemble structured detections list
+            detections = []
+            if gt_bbox is not None and 'boxes_tensor' in locals() and len(boxes_tensor) > 0:
+                # use the previously computed ious and parallel lists
+                for idx, iou_val in enumerate(ious.tolist()):
+                    detections.append({
+                        "class_name": self.resolve_label_index(pred_classes[idx]),
+                        "conf": pred_confs[idx],
+                        "iou": iou_val
+                    })            
             return_result = {
+                "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,

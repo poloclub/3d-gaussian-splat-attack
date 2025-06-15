@@ -92,7 +92,7 @@ class Yolov3Detector(BaseDetector):
 
         return (sum(losses) / len(losses)).sum()
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> any:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False, image_id: int = None) -> any:
         self.model.eval()
         with ch.no_grad():
             image_np = (image.detach().clamp(0,1).permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
@@ -118,6 +118,8 @@ class Yolov3Detector(BaseDetector):
 
         draw = Image.fromarray(image_np.copy())
         pred_classes = []
+        pred_confs = []
+        pred_boxes = []
         closest_confidence = None
         best_class = None
         best_iou = None
@@ -145,6 +147,8 @@ class Yolov3Detector(BaseDetector):
                 draw_ctx.rectangle(xyxy_int, outline="red", width=3)
                 class_idx = int(cls)
                 pred_classes.append(class_idx)
+                pred_confs.append(conf)
+                pred_boxes.append((x1, y1, x2, y2))
                 class_name = self.resolve_label_index(class_idx)
                 try:
                     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size=14)
@@ -178,7 +182,32 @@ class Yolov3Detector(BaseDetector):
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
+            # assemble structured detections list (COCO format)
+            detections = []
+            if dets is not None and len(dets) > 0:
+                for idx, det in enumerate(dets):
+                    if not isinstance(det, ch.Tensor):
+                        continue
+                    det = det.squeeze()
+                    if det.numel() < 6:
+                        continue
+                    det = det.flatten()
+                    *xyxy, conf, cls = det.tolist()[:6]
+                    x1, y1, x2, y2 = [float(coord) for coord in xyxy[:4]]
+                    # compute width and height
+                    w = x2 - x1
+                    h = y2 - y1
+                    # round bbox coordinates to the nearest tenth of a pixel
+                    bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]
+                    detection = {
+                        "image_id": image_id if image_id is not None else -1,
+                        "category_id": int(cls),
+                        "bbox": bbox,
+                        "score": conf
+                    }
+                    detections.append(detection)
             return_result = {
+                "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,

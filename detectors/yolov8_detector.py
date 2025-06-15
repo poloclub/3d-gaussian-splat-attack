@@ -174,37 +174,48 @@ class Yolov8Detector(BaseDetector):
             resized_h, resized_w = img_tensor.shape[2], img_tensor.shape[3]
             scale_x = orig_w / resized_w
             scale_y = orig_h / resized_h
-
-            yolo_wrapper = YOLO("pretrained-models/yolov8/yolov8n.pt", task="detect")
-            results = yolo_wrapper(img_tensor, verbose=False)
-            dets = results[0].boxes.data if results and results[0].boxes is not None else None
+            # Lazy-load a YOLO wrapper for prediction (does not touch load_model)
+            if not hasattr(self, "yolo_wrapper"):
+                self.yolo_wrapper = YOLO("pretrained-models/yolov8/yolov8n.pt", task="detect")
+            # Run detection using raw NumPy image and threshold
+            results = self.yolo_wrapper.predict(source=image_np, conf=threshold, verbose=False)
+            # Extract raw detections as arrays
+            if results and results[0].boxes is not None and len(results[0].boxes) > 0:
+                xyxy_arr = results[0].boxes.xyxy.cpu().numpy()
+                confs    = results[0].boxes.conf.cpu().numpy()
+                cls_ids  = results[0].boxes.cls.cpu().numpy()
+            else:
+                xyxy_arr = np.empty((0, 4))
+                confs    = np.array([])
+                cls_ids  = np.array([])
 
         draw = Image.fromarray(image_np.copy())
         pred_classes = []
+        pred_confs = []
+        pred_boxes = []
         closest_confidence = None
         best_class = None
         best_iou = None
 
-        if dets is not None and len(dets) > 0:
+        if xyxy_arr.shape[0] > 0:
             draw_ctx = ImageDraw.Draw(draw)
             boxes = []
-            for *xyxy, conf, cls in dets:
-                x1, y1, x2, y2 = [coord.item() for coord in xyxy]
-                x1 *= scale_x
-                x2 *= scale_x
-                y1 *= scale_y
-                y2 *= scale_y
-                boxes.append([x1, y1, x2, y2])
-                xyxy_int = [int(x1), int(y1), int(x2), int(y2)]
+            for (x1, y1, x2, y2), conf, cls_id in zip(xyxy_arr, confs, cls_ids):
+                # Scale box back to original image size
+                x1s, y1s = x1 * scale_x, y1 * scale_y
+                x2s, y2s = x2 * scale_x, y2 * scale_y
+                boxes.append([x1s, y1s, x2s, y2s])
+                xyxy_int = [int(x1s), int(y1s), int(x2s), int(y2s)]
                 draw_ctx.rectangle(xyxy_int, outline="red", width=3)
-                class_idx = int(cls.item())
-                pred_classes.append(class_idx)
-                class_name = self.resolve_label_index(class_idx)
+                pred_classes.append(int(cls_id))
+                pred_confs.append(float(conf))
+                pred_boxes.append((x1s, y1s, x2s, y2s))
+                class_name = self.resolve_label_index(int(cls_id))
                 try:
                     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size=14)
                 except OSError:
                     font = ImageFont.load_default()
-                draw_ctx.text((xyxy_int[0], xyxy_int[1] - 10), f"{class_name}, {conf.item():.2f}", fill="white", font=font)
+                draw_ctx.text((xyxy_int[0], xyxy_int[1] - 10), f"{class_name}, {conf:.2f}", fill="white", font=font)
 
             boxes_tensor = ch.tensor(boxes, dtype=ch.float32)
 
@@ -214,7 +225,7 @@ class Yolov8Detector(BaseDetector):
                 best_idx = ious.argmax().item()
                 best_iou = ious[best_idx].item()
                 best_class = pred_classes[best_idx] if best_iou > 0.5 else None
-                closest_confidence = dets[best_idx][-2].item() if best_iou > 0.5 else None
+                closest_confidence = float(confs[best_idx]) if best_iou > 0.5 else None
                 target_pred_exists = (best_iou > 0.5 and best_class == target)
                 untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
             else:
@@ -231,7 +242,18 @@ class Yolov8Detector(BaseDetector):
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
+            # assemble structured detections list
+            detections = []
+            if gt_bbox is not None and 'boxes_tensor' in locals() and len(boxes_tensor) > 0:
+                # use the previously computed ious and parallel lists
+                for idx, iou_val in enumerate(ious.tolist()):
+                    detections.append({
+                        "class_name": self.resolve_label_index(pred_classes[idx]),
+                        "conf": pred_confs[idx],
+                        "iou": iou_val
+                    })            
             return_result = {
+                "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,
