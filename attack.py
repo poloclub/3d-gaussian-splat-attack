@@ -260,6 +260,7 @@ def run(cfg : DictConfig) -> None:
     # Additional attack setup
 
     start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
+    shuffle_cams = cfg.shuffle_cams
     shift_amount = cfg.shift_amount
     attack_conf_thresh = cfg.attack_conf_thresh
     max_iters = cfg.max_iters
@@ -292,7 +293,7 @@ def run(cfg : DictConfig) -> None:
         # Load Gaussian Splat model
         gaussians = GaussianModel(dataset.sh_degree)
         gaussians.training_setup(opt)
-        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=shuffle_cams) # very important to specify iteration to load! use -1 for highest iteration
         num_classes = dataset.num_classes
         print("Num classes: ",num_classes)     
 
@@ -327,7 +328,7 @@ def run(cfg : DictConfig) -> None:
         # Load Gaussian Splat model
         gaussians = GaussianModel(dataset.sh_degree)
         gaussians.training_setup(opt)
-        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=shuffle_cams) # very important to specify iteration to load! use -1 for highest iteration
         num_classes = dataset.num_classes
         print("Num classes: ",num_classes)
         # copy gaussians variable to new object
@@ -336,7 +337,7 @@ def run(cfg : DictConfig) -> None:
     elif dataset.combine_splats == True:
         gaussians = GaussianModel(dataset.sh_degree)
         gaussians.training_setup(opt)
-        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=shuffle_cams) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
         ply_paths = [os.path.join(cfg.splat_asset_path,cfg.scene.target_splat), 
                      os.path.join(cfg.splat_asset_path,cfg.scene.background_splat)]        
@@ -412,8 +413,19 @@ def run(cfg : DictConfig) -> None:
         camera.yaw(7*i)
 
         viewpoint_stack.append(camera)
-
+    
+    # Ensure viewpoint_stack length is divisible by batch_size to avoid infinite loops
+    if batch_mode and batch_size > 0:
+        remainder = len(viewpoint_stack) % batch_size
+        if remainder != 0:
+            print(f"[Info] Truncating {remainder} camera(s) so that "
+                  f"len(viewpoint_stack) is divisible by batch_size={batch_size}.")
+            viewpoint_stack = viewpoint_stack[:-remainder]
+    
     total_views = len(viewpoint_stack)
+    import math
+    # Each batch is allowed its own `max_iters` budget.
+    num_batches = math.ceil(total_views / batch_size) if batch_mode and batch_size > 0 else 1
     # Create a pending list of cameras for batching
     pending_views = viewpoint_stack.copy()
 
@@ -448,7 +460,17 @@ def run(cfg : DictConfig) -> None:
     gt_bboxes = np.array(bboxes)
     pending_bboxes = gt_bboxes.copy()
 
-    for it in range(max_iters):
+    for it in range(max_iters * num_batches):
+        # Exit early if all viewpoints have been processed
+        if batch_mode and len(pending_views) == 0:
+            break
+        # If we've exhausted the per‑batch iteration budget without full success,
+        # drop the current batch and continue with the next one.
+        if batch_mode and (it + 1) % max_iters == 0:
+            print(f"[Info] Reached the per-batch limit of {max_iters} iterations without success. Moving to next batch.")
+            pending_views = pending_views[batch_size:]
+            pending_bboxes = pending_bboxes[batch_size:]
+            continue
         renders = []
         
         if batch_mode:
@@ -541,8 +563,9 @@ def run(cfg : DictConfig) -> None:
                     # If no more cameras remain, finish the attack
                     if len(pending_views) == 0:
                         print("All camera viewpoints attacked successfully")
-                        print("saving gaussians")
-                        gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_adv_{it}_{cfg.detector_name}.ply"))
+                        save_path = os.path.join("output", f"{cfg.scene.name}_adv_{cfg.scene.detector_name}.ply")
+                        print(f"saving gaussians to {save_path}")
+                        gaussians.save_ply(save_path)
                         break
             else:
                 img_path = f"renders/render_concat_0.png"
@@ -569,11 +592,13 @@ def run(cfg : DictConfig) -> None:
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
                     if len(viewpoint_stack) == 0:
+                        save_path = os.path.join("output", f"{cfg.scene.name}_adv_{cfg.scene.detector_name}.ply")
+                        print(f"saving gaussians to {save_path}")
+                        gaussians.save_ply(save_path)
                         print ("All camera viewpoints attacked successfully")
-                        print("saving gaussians")
-                        gaussians.save_ply(os.path.join("output", f"{cfg.scene.name}_adv_{it}_{cfg.detector_name}.ply"))
                         break
                 print(f"Success: {success}")
+        
         del combined_gaussians
         gaussians.optimizer.zero_grad(set_to_none=True)
         detector.zero_grad()
