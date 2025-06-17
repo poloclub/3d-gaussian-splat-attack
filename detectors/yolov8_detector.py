@@ -155,7 +155,7 @@ class Yolov8Detector(BaseDetector):
 
         return ch.sum(losses[0]) / losses[0].shape[0]
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> Any:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False, image_id: int = None) -> Any:
         self.model.eval()
         with ch.no_grad():
             image_np = (image.detach().clamp(0,1).permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
@@ -242,21 +242,31 @@ class Yolov8Detector(BaseDetector):
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
-            # assemble structured detections list
+            # assemble structured detections list (COCO format)
             detections = []
-            if gt_bbox is not None and 'boxes_tensor' in locals() and len(boxes_tensor) > 0:
-                # use the previously computed ious and parallel lists
-                for idx, iou_val in enumerate(ious.tolist()):
+            if xyxy_arr.shape[0] > 0:
+                for idx in range(len(xyxy_arr)):
+                    x1, y1, x2, y2 = xyxy_arr[idx]
+                    conf = float(confs[idx])
+                    cls = int(cls_ids[idx])
+                    w, h = x2 - x1, y2 - y1
+                    bbox = [
+                        round(float(x1), 1),
+                        round(float(y1), 1),
+                        round(float(w), 1),
+                        round(float(h), 1)
+                    ]
                     detections.append({
-                        "class_name": self.resolve_label_index(pred_classes[idx]),
-                        "conf": pred_confs[idx],
-                        "iou": iou_val
-                    })            
+                        "image_id": int(image_id) if image_id is not None else -1,
+                        "category_id": int(cls),
+                        "bbox": bbox,
+                        "score": float(conf)
+                    })
             return_result = {
                 "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
-                "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "closest_confidence": float(closest_confidence) if (gt_bbox is not None and closest_confidence is not None) else None,
                 "untarget_pred_not_exists": untarget_pred_not_exists,
                 "target_pred_exists": target_pred_exists,
             }
