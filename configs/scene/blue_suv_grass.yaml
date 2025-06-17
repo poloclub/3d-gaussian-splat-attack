@@ -4,7 +4,7 @@ model_path: ./assets/${cam_path}
 target_splat : "adv_blue_suv_grass.ply"
 background_splat : "nyc_block_cycles_shadow.ply"
 cam_indices: [0]
-is_targeted: False
+is_targeted: True
 target: 'potted_plant'
 untarget: 'car'
-detector_name: detectron2 #yolov3 #yolov8 
+detector_name: yolov8
