@@ -243,6 +243,7 @@ class Yolov11Detector(BaseDetector):
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
                 "closest_confidence": float(closest_confidence) if (gt_bbox is not None and closest_confidence is not None) else None,
+                "best_iou": best_iou if gt_bbox is not None else None,
                 "untarget_pred_not_exists": untarget_pred_not_exists,
                 "target_pred_exists": target_pred_exists,
             }
