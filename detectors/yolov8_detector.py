@@ -196,7 +196,8 @@ class Yolov8Detector(BaseDetector):
         closest_confidence = None
         best_class = None
         best_iou = None
-
+        formatted_gt_bbox = None
+        best_idx = None
         if xyxy_arr.shape[0] > 0:
             draw_ctx = ImageDraw.Draw(draw)
             boxes = []
@@ -221,6 +222,10 @@ class Yolov8Detector(BaseDetector):
 
             if gt_bbox is not None and len(boxes_tensor) > 0:
                 gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                x1, y1, x2, y2 = [float(coord) for coord in gt_box_tensor[0]]
+                w = x2 - x1
+                h = y2 - y1
+                formatted_gt_bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]                         
                 ious = box_iou(boxes_tensor, gt_box_tensor).squeeze(1)
                 best_idx = ious.argmax().item()
                 best_iou = ious[best_idx].item()
@@ -266,7 +271,10 @@ class Yolov8Detector(BaseDetector):
                 "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
-                "closest_confidence": float(closest_confidence) if (gt_bbox is not None and closest_confidence is not None) else None,
+                "closest_category_id": best_class if best_class is not None else None,
+                "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "closest_bbox": detections[best_idx]["bbox"] if (gt_bbox is not None and best_idx) is not None else None,
+                "gt_bbox": formatted_gt_bbox,
                 "best_iou": best_iou if gt_bbox is not None else None,
                 "untarget_pred_not_exists": untarget_pred_not_exists,
                 "target_pred_exists": target_pred_exists,

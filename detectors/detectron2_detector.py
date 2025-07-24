@@ -104,7 +104,7 @@ class Detectron2Detector(BaseDetector):
         del x
         return loss
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> Any:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False, image_id: int = None) -> Any:
         """
         Run model prediction on the given image and save the visualization to disk.
         """
@@ -140,6 +140,8 @@ class Detectron2Detector(BaseDetector):
             closest_confidence = None
             best_class = None
             best_iou = None
+            formatted_gt_bbox = None
+            best_idx = None            
             if gt_bbox is not None:
                 # FIXME: makeoption to draw gt bbox
                 # v.draw_box(gt_bbox, edge_color='green')
@@ -162,6 +164,10 @@ class Detectron2Detector(BaseDetector):
 
             if gt_bbox is not None:
                 gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                x1, y1, x2, y2 = [float(coord) for coord in gt_box_tensor[0]]
+                w = x2 - x1
+                h = y2 - y1
+                formatted_gt_bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]                      
                 pred_boxes = instances.pred_boxes
                 gt_box_struct = Boxes(gt_box_tensor).to(pred_boxes.device)
  
@@ -184,17 +190,39 @@ class Detectron2Detector(BaseDetector):
         PIL.Image.fromarray(pred).save(path)
 
         if result_dict:
+            # assemble structured detections list (COCO format) from Detectron2 outputs
+            detections = []
+            pred_boxes = instances.pred_boxes.tensor.cpu().numpy()
+            pred_scores = instances.scores.cpu().numpy()
+            pred_classes = instances.pred_classes.cpu().numpy()
+            for idx in range(len(pred_boxes)):
+                x1, y1, x2, y2 = pred_boxes[idx]
+                w = x2 - x1
+                h = y2 - y1
+                bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]
+                detection = {
+                    "image_id": getattr(self, 'image_id', -1),
+                    "category_id": int(pred_classes[idx]),
+                    "bbox": bbox,
+                    "score": float(pred_scores[idx])
+                }
+                detections.append(detection)
+
             meets_criteria = (
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
             return_result = {
+                "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": best_class_name if gt_bbox is not None and len(pred_boxes) > 0 else None,
+                "closest_category_id": best_class if best_class is not None else None,
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,
-                "best_iou": best_iou if gt_bbox is not None else None,
-                "untarget_pred_not_exists": untarget_pred_not_exists,
+                "closest_bbox": [float(x) for x in detections[best_idx]["bbox"]] if gt_bbox is not None and best_idx is not None else None,
+                "gt_bbox": [float(x) for x in formatted_gt_bbox] if formatted_gt_bbox is not None else None,
+                "best_iou": float(best_iou) if best_iou is not None else None,
                 "target_pred_exists": target_pred_exists,
+                "untarget_pred_not_exists": untarget_pred_not_exists,
             }
             return meets_criteria, return_result
 

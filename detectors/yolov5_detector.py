@@ -104,7 +104,7 @@ class Yolov5Detector(BaseDetector):
 
         return ch.sum(losses[0]) / losses[0].shape[0]
 
-    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False) -> Any:
+    def predict_and_save(self, image: ch.Tensor, path: str, target: int = None, untarget: int = None, is_targeted: bool = True, threshold: float = 0.7, format: str = "RGB", gt_bbox: List[int] = None, result_dict: bool = False, image_id: int = None) -> any:
         self.model.eval()
         with ch.no_grad():
             image_np = (image.detach().clamp(0,1).permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
@@ -135,7 +135,8 @@ class Yolov5Detector(BaseDetector):
         closest_confidence = None
         best_class = None
         best_iou = None
-
+        formatted_gt_bbox = None
+        best_idx = None
         if dets is not None and len(dets) > 0:
             draw_ctx = ImageDraw.Draw(draw)
             boxes = []
@@ -173,6 +174,10 @@ class Yolov5Detector(BaseDetector):
 
             if gt_bbox is not None and len(boxes_tensor) > 0:
                 gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                x1, y1, x2, y2 = [float(coord) for coord in gt_box_tensor[0]]
+                w = x2 - x1
+                h = y2 - y1
+                formatted_gt_bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]                     
                 ious = box_iou(boxes_tensor, gt_box_tensor).squeeze(1)
                 best_idx = ious.argmax().item()
                 best_iou = ious[best_idx].item()
@@ -188,27 +193,43 @@ class Yolov5Detector(BaseDetector):
             untarget_pred_not_exists = True
 
         draw.save(path)
-
         if result_dict:
             meets_criteria = (
                 (is_targeted and target_pred_exists and (untarget is None or untarget_pred_not_exists)) or
                 (not is_targeted and untarget_pred_not_exists)
             )
-            # assemble structured detections list
+        if result_dict:
             detections = []
-            if gt_bbox is not None and 'boxes_tensor' in locals() and len(boxes_tensor) > 0:
-                # use the previously computed ious and parallel lists
-                for idx, iou_val in enumerate(ious.tolist()):
-                    detections.append({
-                        "class_name": self.resolve_label_index(pred_classes[idx]),
-                        "conf": pred_confs[idx],
-                        "iou": iou_val
-                    })            
+            if dets is not None and len(dets) > 0:
+                for idx, det in enumerate(dets):
+                    if not isinstance(det, ch.Tensor):
+                        continue
+                    det = det.squeeze()
+                    if det.numel() < 6:
+                        continue
+                    det = det.flatten()
+                    *xyxy, conf, cls = det.tolist()[:6]
+                    x1, y1, x2, y2 = [float(coord) for coord in xyxy[:4]]
+                    # compute width and height
+                    w = x2 - x1
+                    h = y2 - y1
+                    # round bbox coordinates to the nearest tenth of a pixel
+                    bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]
+                    detection = {
+                        "image_id": image_id if image_id is not None else -1,
+                        "category_id": int(cls),
+                        "bbox": bbox,
+                        "score": conf
+                    }
+                    detections.append(detection)
             return_result = {
                 "detections": detections,
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
+                "closest_category_id": best_class if best_class is not None else None,
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "closest_bbox": detections[best_idx]["bbox"] if (gt_bbox is not None and best_idx) is not None else None,
+                "gt_bbox": formatted_gt_bbox,
                 "best_iou": best_iou if gt_bbox is not None else None,
                 "untarget_pred_not_exists": untarget_pred_not_exists,
                 "target_pred_exists": target_pred_exists,
