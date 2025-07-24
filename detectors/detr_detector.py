@@ -253,6 +253,7 @@ class DetrDetector(BaseDetector):
                 ],
                 "closest_class": best_class if gt_bbox is not None else None,
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
+                "closest_category_id": self.yolov3_resolve_label_index(self.resolve_label_index(best_class)) if best_class is not None else None, # get 80 class index mapping from YOLO, since DETR mapped to 90
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,
                 "best_iou": best_iou if gt_bbox is not None else None,
                 "gt_bbox": [float(x) for x in formatted_gt_bbox] if gt_bbox is not None else None,
@@ -288,6 +289,34 @@ class DetrDetector(BaseDetector):
         if label_norm in lookup:
             return lookup[label_norm]
         raise ValueError(f"Label '{label_name}' not found in DETR COCO classes.")
+
+    def yolov3_resolve_label_index(self, label):
+        def normalize(name):
+            return name.replace('_', ' ').lower()
+        coco_class_names = [
+            'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train',
+            'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter',
+            'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear',
+            'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase',
+            'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat',
+            'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle',
+            'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+            'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut',
+            'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet',
+            'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
+            'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+            'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+        ]
+        if isinstance(label, int):
+            if 0 <= label < len(coco_class_names):
+                return coco_class_names[label]
+            raise ValueError(f"Class index {label} is out of bounds.")
+        label = normalize(label)
+        label_lookup = {normalize(name): idx for idx, name in enumerate(coco_class_names)}
+        if label not in label_lookup:
+            raise ValueError(f"Label '{label}' not found in YOLOv3 COCO class list.")
+        return label_lookup[label]
+
 
 # """As you can see, DETR architecture is very simple, thanks to the representational power of the Transformer. There are two main components:
 # * a convolutional backbone - we use ResNet-50 in this demo
