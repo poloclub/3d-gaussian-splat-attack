@@ -279,9 +279,13 @@ def run(cfg : DictConfig) -> None:
         # structured JSON log for each camera
         structured = {
             "cam": it,
-            "detections": result["detections"],
-            "closest_class": closest_class,
-            "closest_confidence": confidence_str
+            # "detections": result["detections"],
+            "pred_class": closest_class,
+            "pred_category_id": result["closest_category_id"] if "closest_category_id" in result else None,
+            "confidence": confidence_str,
+            "bbox": result["closest_bbox"] if "closest_bbox" in result else None,
+            "gt_bbox": result["gt_bbox"] if "gt_bbox" in result else None,
+            "iou": result["best_iou"] if "best_iou" in result else None
         }
         log.info(json.dumps(structured))
         
