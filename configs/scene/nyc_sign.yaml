@@ -1,0 +1,10 @@
+name: null
+source_path: ./assets/${cam_path} 
+model_path: ./assets/${cam_path}
+target_splat : null
+background_splat : "nyc_street_corner.ply"
+cam_indices: [0]
+is_targeted: False
+target: 'sports ball'
+untarget: 'stop_sign'
+detector_name: null
