@@ -1,62 +1,36 @@
-# 3D-Gaussian-Splat-Attack
+![3D Gaussian Splat](docs/3dgs.png)
+![Easily Attacked to Cause Harm](docs/easily_attacked.png)
+### 3DGS vulnerabilities are underexplored. We highlight new potential threats to robotic learning for autonomous navigation and other safety-critical 3DGS applications.
+---
 
-### Creating an attackable example 
-The `splats` folder contains pre-trained Gaussian Splat scenes.  Using the original project, you need to combine both the input data (before creating splats) and the output data (trained splat scene) into a single folder as follows:
-```
-<location>
-|---distorted
-|   |---sparse
-|       |---0
-|           |---cameras.bin
-|           |---images.bin
-|           |---points3D.bin
-|           |---project.ini
-|---images
-|   |---<image 0>
-|   |---<image 1>
-|   |---...
-|---input
-|   |---<image 0>
-|   |---<image 1>
-|   |---...
-|---point_cloud
-|   |---iteration_7000
-|   |   |---point_cloud.ply
-|   |---iteration_30000
-|       |---point_cloud.ply
-|---sparse
-|   |---0
-|       |---cameras.bin
-|       |---images.bin
-|       |---points3D.bin
-|---stereo
-|   |---consistency_graphs
-|   |---depth_maps
-|   |---normal_maps
-|   |---fusion.cfg
-|   |---patch-match.cfg
-|---cameras.json
-|---cfg_args
-|---input.ply
-|---run-colmap-geometric.sh
-|---run-colmap-photometric.sh
-```
+### CLOAK attack conceals adversarial textures visible only from certain views
 
-### Edit Gaussian Splat Colors
-In `edit_gs_color.py`, you can edit the colors of the Gaussian splats in the point cloud. The script can be used to change the colors to a single color, grayscale, sepia, or random colors. The script can be used as follows:
+![CLOAK Attack](docs/crown_jewel_cloak.png)
 
-```bash
-python edit_gs_color.py input.ply output.ply single --rgb 0.0 0.0 1.0
+#### CLOAK is a poisoning attack method - benign images are replaced with adversarial images in the 3DGS training dataset for targeted camera viewpoints. 
 
-python edit_gs_color.py input.ply output.ply grayscale
+![CLOAK explainer](docs/cloak_explainer.png)
+---
 
-python edit_gs_color.py input.ply output.ply sepia
+### DAGGER manipulates Gaussian attributes to induce misdetections on Faster R-CNN. 
+![DAGGER Attack](docs/dagger_crown_jewel.png)
 
-python edit_gs_color.py input.ply output.ply random
-```
+#### DAGGER generalizes projected gradient descent attack by exploiting the differentiability of the 3DGS scene representation to manipulate splat color, scaling, translation, rotation, or alpha attributes to fool object detectors.
+---
 
-### Install Yolov3 as submodule 
-```bash
-git submodule add https://github.com/ultralytics/yolov3 detectors/yolov3-legacy
-git submodule update --init --recursive
+### [Demo Videos](docs/demos.md)
+---
+
+## Credits
+Led by [Matthew Hull](https://matthewdhull.github.io), 3D Gaussian Vulnerabilities is a result of a collaboration between the [Polo Club of Data Science](https://poloclub.github.io) at Georgia Tech and [Technology Innovation Institute](https://www.tii.ae). 3DGaussian Splat Vulnerabilities has been created by [Matthew Hull](https://matthewdhull.github.io), [Haoyang Yang](https://alexanderyang.me), [Pratham Mehta](https://twixupmysleeve.wixsite.com/home), [Mansi Phute](https://mphute.github.io), [Aeree Cho](https://aereeeee.github.io), Haoran Wang, [Matthew Lau](https://sites.google.com/view/matthewlauende/home), [Wenke Lee](http://wenke.gtisc.gatech.edu), Willian Lunardi, Martin Andreoni, and [Duen Horng Chau](https://poloclub.github.io/polochau/).
+
+## Citation
+To learn more about 3D Gaussian Splat Vulnerabilities, please read our [paper](https://arxiv.org/pdf/2506.00280), presented at CVPR 2025 Workshop on Neural Fields Beyond Conventional Cameras:
+```latex
+@misc{hull20253dgsvulnerabilities,
+    title={3D Gaussian Splat Vulnerabilities}, 
+    author={Matthew Hull and Haoyang Yang and Pratham Mehta and Mansi Phute and Aeree Cho and Haoran Wang and Matthew Lau and Wenke Lee and Willian Lunardi and Martin Andreoni and Duen Horng Chau},
+    booktitle = {CVPR Workshop on Neural Fields Beyond Conventional Cameras},
+    year={2025}
+}
 ```
