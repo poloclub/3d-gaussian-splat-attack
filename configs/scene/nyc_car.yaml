@@ -1,0 +1,10 @@
+name: null
+source_path: ./assets/${cam_path} 
+model_path: ./assets/${cam_path}
+target_splat : null
+background_splat : "nyc_block_cycles_shadow.ply"
+cam_indices: [0]
+is_targeted: False
+target: 'truck'
+untarget: 'car'
+detector_name: null

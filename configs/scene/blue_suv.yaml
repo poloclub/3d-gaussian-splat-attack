@@ -1,0 +1,10 @@
+name: blue_suv
+source_path: ./assets/${cam_path} 
+model_path: ./assets/${cam_path}
+target_splat : "nyc_blue_suv.ply"
+background_splat : "nyc_block_cycles_shadow.ply"
+cam_indices: [0]
+is_targeted: False
+target: 'train'
+untarget: 'car'
+detector_name: detectron2 #yolov3 #yolov8 

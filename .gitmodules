@@ -1,3 +1,9 @@
 [submodule "submodules/gaussian-splatting"]
 	path = submodules/gaussian-splatting
 	url = https://github.com/graphdeco-inria/gaussian-splatting.git
+[submodule "submodules/yolov3-legacy"]
+	path = submodules/yolov3-legacy
+	url = https://github.com/ultralytics/yolov3
+[submodule "submodules/detr"]
+	path = submodules/detr
+	url = https://github.com/facebookresearch/detr.git

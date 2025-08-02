@@ -4,23 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        {
-            "name": "Attack Splat",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "attack.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"0"}
-        }, {
-            "name": "DT2 Test",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "model.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env" : {"CUDA_VISIBLE_DEVICES":"2"}
-        },
          {
             "name": "Edit Gaussian Splat Color - Single Color",
             "type": "debugpy",
@@ -245,7 +228,7 @@
                 "--model_path", "/raid/mhull32/gaussian-splatting/output/nyc_block",
                 "--source_path", "/raid/mhull32/gaussian-splatting/output/nyc_block",
                 "--combine_splats",
-                "--combine_splats_paths", "output/nyc_block/nyc_maserati.ply", "output/nyc_block/nyc_block_cycles_shadow.ply",
+                "--combine_splats_paths", "output/nyc_block/nyc_maserati.ply", "output/nyc_block/nyc_block.ply",
                 "--target", "0",
                 "--epsilon","5.0",
                 "--alpha","0.5",                
@@ -450,15 +433,485 @@
                 "--train_split"
             ]
         }, {
-            "name": "Attack Maserati",
+            "name": "Attack Blue SUV - Grass",
             "type": "debugpy",
             "request": "launch",
             "program": "attack.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},      
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/raid/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
             "args": [
-                "scene=maserati"
+                // "--multirun",
+                "scene=blue_suv_grass",
+                "max_iters=50",
+                "device=0",
+                "batch_mode=True",
+                "batch_size=10",
+                "scene.detector_name=yolov8",
+                "scene.cam_indices=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224,0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224]",
+                "shuffle_cams=True",
+                "cam_path=nyc_block_tiers",
+                "scene.target_splat='adv_blue_suv_grass.ply'",
+                "scene.background_splat='nyc_block.ply'",
+            ]            
+            // "scene.cam_indices=[5,6,8,20,35,36,38,39,50,65,68,69,9,21,23,24,51,53,54,66,10,12,25,27,40,42,55,57,70,72,7,11,13,22,26,28,37,41,43,52,56,58,67,71,73]",
+            // "scene.cam_indices=[14,15,16,17]"
+        }, {
+            "name": "Attack Hydrant",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "attack.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/raid/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "scene=hydrant",
+                "device=4",
+                "combine_splats=False",
+                "batch_mode=True",
+                "scene.detector_name=detectron2",
+                "start_cam=0",
+                "end_cam=255",
+                "batch_size=5",
+                "scene.cam_indices=[0,20,40,60,80,100,120,140,160,180,200,220,240,1,21,41,61,81,101,121,141,161,181,201,221,241,2,22,42,62,82,102,122,142,162,182,202,222,242,243,244]",
+                // "scene.cam_indices=[0,20,40,60,80,1,21,41,61,81,2,22,42,62,82,3,23,43,63,83,4,24,44,64,84,5,25,45,65,85,6,26,46,66,86,7,27,47,67,87,8,28,48,68,88,9,29,49,69,89,10,30,50,70,90,11,31,51,71,91,12,32,52,72,92,13,33,53,73,93,14,34,54,74,94,15,35,55,75,95,16,36,56,76,96,17,37,57,77,97,18,38,58,78,98,19,39,59,79,99,100,120,140,160,180,101,121,141,161,181,102,122,142,162,182,103,123,143,163,183,104,124,144,164,184,105,125,145,165,185,106,126,146,166,186,107,127,147,167,187,108,128,148,168,188,109,129,149,169,189,110,130,150,170,190,111,131,151,171,191,112,132,152,172,192,113,133,153,173,193,114,134,154,174,194,115,135,155,175,195,116,136,156,176,196,117,137,157,177,197,118,138,158,178,198,119,139,159,179,199]",
+                // "scene.cam_indices=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254]",
+            ]            
+        }, 
+        {
+            "name": "Render Maserati",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "scene=maserati",
+                "device=4",
+                "start_cam=0",
+                "end_cam=80",
+                "scene.detector_name=yolov5",
+                "cam_path=nyc_block_1_0",
+                "scene.target_splat='nyc_blue_car_adv.ply'",
+                "scene.background_splat='nyc_block.ply'",
+            ]            
+        },  {
+            "name": "Render Cars - YOLOv3",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=0",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=yolov3",
+                // "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_adv.ply','nyc_red_car_benign.ply','nyc_red_car_adv.ply','nyc_gray_car_benign.ply','nyc_gray_car_adv.ply'",
+                "scene.target_splat='nyc_blue_car_grass.ply', 'nyc_red_car_grass.ply', 'nyc_gray_car_grass.ply'",
+                "scene.background_splat='nyc_block.ply'"
+            ]   
+        },   {
+            "name": "Render Cars - YOLOv5",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=1",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=yolov5",
+                // "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_adv.ply','nyc_red_car_benign.ply','nyc_red_car_adv.ply','nyc_gray_car_benign.ply','nyc_gray_car_adv.ply'",
+                "scene.target_splat='nyc_blue_car_grass.ply', 'nyc_red_car_grass.ply', 'nyc_gray_car_grass.ply'",                
+                "scene.background_splat='nyc_block.ply'"
+                ]            
+        },  {
+            "name": "Render Cars - YOLOv8",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=2",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=yolov8",
+                // "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_adv.ply','nyc_red_car_benign.ply','nyc_red_car_adv.ply','nyc_gray_car_benign.ply','nyc_gray_car_adv.ply'",
+                "scene.target_splat='nyc_blue_car_grass.ply', 'nyc_red_car_grass.ply', 'nyc_gray_car_grass.ply'",
+                "scene.background_splat='nyc_block.ply'"
+            ]            
+        },  {
+            "name": "Render Cars - YOLOv11",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=2",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=yolov11",
+                // "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_adv.ply','nyc_red_car_benign.ply','nyc_red_car_adv.ply','nyc_gray_car_benign.ply','nyc_gray_car_adv.ply'",
+                "scene.target_splat='nyc_blue_car_grass.ply', 'nyc_red_car_grass.ply', 'nyc_gray_car_grass.ply'",                
+                "scene.background_splat='nyc_block.ply'"
+            ]            
+        }, {
+            "name": "Render Cars - Detectron2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=4",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=detectron2",
+                // "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_adv.ply','nyc_red_car_benign.ply','nyc_red_car_adv.ply','nyc_gray_car_benign.ply','nyc_gray_car_adv.ply'",
+                "scene.target_splat='nyc_blue_car_grass.ply', 'nyc_red_car_grass.ply', 'nyc_gray_car_grass.ply'",
+                "scene.background_splat='nyc_block.ply'"
+            ]
+        },   {
+            "name": "Render Cars - DETR",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=4",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=detr",
+                // "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_adv.ply','nyc_red_car_benign.ply','nyc_red_car_adv.ply','nyc_gray_car_benign.ply','nyc_gray_car_adv.ply'",
+                "scene.target_splat='nyc_blue_car_grass.ply', 'nyc_red_car_grass.ply', 'nyc_gray_car_grass.ply'",                
+                "scene.background_splat='nyc_block.ply'"
+            ]
+            
+        },   {
+            "name": "Render RW Cars - YOLOv8",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=4",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=detr",
+                "scene.target_splat='ny_rw_blue_car_benign.ply','nyc_rw_concrete_blue_car.ply'",
+                "scene.background_splat='nyc_block.ply'"
+            ]
+            
+        }, {
+            "name": "Render Concrete Car Pavement Scene - YOLOv11",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=cb_pavement",
+                "device=2",
+                "start_cam=0",
+                "end_cam=352",
+                "cam_path=cb_pavement",
+                "scene.detector_name=yolov11",
+                "scene.target_splat='rw_concrete_blue_car.ply'",
+                "scene.background_splat='rw_pavement.ply'"
+            ]
+        },   {
+            "name": "SH Ablation - Render Cars",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=4",
+                "start_cam=0",
+                "end_cam=164",
+                "cam_path=high_alt_test",
+                "scene.detector_name=detr",
+                "scene.target_splat='nyc_blue_car_grass_SH1.ply','nyc_blue_car_grass_SH2.ply'",
+                "scene.background_splat='nyc_block.ply'"
+            ]
+            
+        }, {
+            "name": "Camera Tiers Ablation - Render Cars",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_car",
+                "device=4",
+                "start_cam=0",
+                "end_cam=35",
+                "cam_path=alt_5",
+                "scene.detector_name=yolov3,yolov5,yolov8,yolov11,detr,detectron2",
+                "scene.target_splat='nyc_blue_car_benign.ply','nyc_blue_car_grass.ply'",
+                "scene.background_splat='nyc_block.ply'"
+            ]            
+        }, {
+            "name": "Render Stop Sign - YOLOv3",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_sign",
+                "device=0",
+                "start_cam=0",
+                "end_cam=144",
+                "cam_path=nyc_street_corner",
+                "scene.detector_name=yolov3",
+                // "scene.target_splat='nyc_stop_sign_benign.ply','nyc_stop_sign_clock.ply'",
+                "scene.target_splat='nyc_stop_sign_soccer.ply'",
+                "scene.background_splat='nyc_street_corner.ply'"
+            ]   
+        },   {
+            "name": "Render Stop Sign - YOLOv5",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_sign",
+                "device=0",
+                "start_cam=0",
+                "end_cam=144",
+                "cam_path=nyc_street_corner",
+                "scene.detector_name=yolov5",
+                "scene.target_splat='nyc_stop_sign_soccer.ply'",
+                // "scene.target_splat='nyc_stop_sign_benign.ply','nyc_stop_sign_clock.ply'",
+                "scene.background_splat='nyc_street_corner.ply'"
+            ]   
+        },   {
+            "name": "Render Stop Sign - YOLOv8",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_sign",
+                "device=0",
+                "start_cam=0",
+                "end_cam=144",
+                "cam_path=nyc_street_corner",
+                "scene.detector_name=yolov8",
+                "scene.target_splat='nyc_stop_sign_soccer.ply'",
+                // "scene.target_splat='nyc_stop_sign_benign.ply','nyc_stop_sign_clock.ply'",
+                "scene.background_splat='nyc_street_corner.ply'"
+            ]   
+        },  {
+            "name": "Render Stop Sign - YOLOv11",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_sign",
+                "device=0",
+                "start_cam=0",
+                "end_cam=144",
+                "cam_path=nyc_street_corner",
+                "scene.detector_name=yolov11",
+                "scene.target_splat='nyc_stop_sign_soccer.ply'",
+                // "scene.target_splat='nyc_stop_sign_benign.ply','nyc_stop_sign_clock.ply'",
+                "scene.background_splat='nyc_street_corner.ply'"
+            ]   
+        },  {
+            "name": "Render Stop Sign - Detectron2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_sign",
+                "device=0",
+                "start_cam=0",
+                "end_cam=144",
+                "cam_path=nyc_street_corner",
+                "scene.detector_name=detectron2",
+                "scene.target_splat='nyc_stop_sign_soccer.ply'",
+                // "scene.target_splat='nyc_stop_sign_benign.ply','nyc_stop_sign_clock.ply'",
+                "scene.background_splat='nyc_street_corner.ply'"
+            ]   
+        }, {
+            "name": "Render Stop Sign - DETR",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "--multirun",
+                "scene=nyc_sign",
+                "device=0",
+                "start_cam=0",
+                "end_cam=144",
+                "cam_path=nyc_street_corner",
+                "scene.detector_name=detr",
+                "scene.target_splat='nyc_stop_sign_soccer.ply'",
+                // "scene.target_splat='nyc_stop_sign_benign.ply','nyc_stop_sign_clock.ply'",
+                "scene.background_splat='nyc_street_corner.ply'"
+            ]   
+        }, {
+            "name": "Render Hydrant",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/render.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
+                "PYTHONPATH": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack"
+            }, 
+            "args": [
+                "scene=hydrant",
+                "device=4",
+                "combine_splats=False",
+                "start_cam=0",
+                "end_cam=254",
+                "scene.detector_name=detectron2",
+                "scene.model_path=assets/hydrant",
+                "scene.source_path=assets/hydrant",
             ]            
         }, {
             "name": "Attack Stop Sign",
@@ -471,6 +924,48 @@
             "args": [
                 "scene=stop_sign"
             ]            
+        }, {
+            "name": "Debug YOLOv8",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "debug_yolov8_outputs.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7"},
         },
+        {
+            "name": "Make Dummy PNG Files",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "/bin/bash",
+            "console": "integratedTerminal",
+            "cwd": "/nvmescratch/mhull32/3D-Gaussian-Splat-Attack/assets/nyc_street_corner/images",
+            "args": [
+            "python3",
+            "-c",
+            "from PIL import Image; [Image.new('RGB', (640,640), (0,0,0)).save(f'{i:04d}.png') for i in range(1,145)]"
+            ]
+        }, {
+                "name": "Run YOLOv3 Overhead",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "yolov3_overhead.py",
+                "console": "integratedTerminal",
+                "justMyCode": false,
+                "args": [
+                    "--input_dir", "/raid/mhull32/3D-Gaussian-Splat-Attack/data"
+                ]
+        },{
+                "name": "Run YOLOv11 Overhead",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "yolov11_overhead.py",
+                "console": "integratedTerminal",
+                "justMyCode": false,
+                "args": [
+                    "--input_dir", "renders/benign_gray_car"
+                ]
+        },
+        
     ]
 }

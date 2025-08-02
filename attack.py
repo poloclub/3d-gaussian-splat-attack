@@ -1,39 +1,24 @@
-import torch
-import numpy as np
 import sys
-import argparse
 import os
+import copy
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from random import randint
-from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
-from scene import Scene, GaussianModel
-from gaussian_renderer import render
-from scene.cameras import Camera  
-from arguments import GroupParams
-import subprocess
-import PIL
-from PIL import Image
-from tqdm import tqdm
-from edit_object_removal import points_inside_convex_hull
-from utils.graphics_utils import getWorld2View2, getProjectionMatrix
-import copy
-
-
-import torch
 import argparse
-import os
-import copy
+import torch
+import subprocess
+import numpy as np
+from tqdm import tqdm
+import PIL
+import torch.nn as nn
+from PIL import Image, ImageDraw
 from random import randint
-from model import detectron2_model, dt2_input, save_adv_image_preds, model_input, get_instances_bboxes
+from omegaconf import DictConfig, OmegaConf
+from detectors.factory import load_detector
 from scene import Scene, GaussianModel
 from gaussian_renderer import render
 from scene.cameras import Camera  
 from arguments import GroupParams
+# from edit_object_removal import points_inside_convex_hull
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
-from edit_object_removal import points_inside_convex_hull
-from PIL import Image, ImageDraw
-from tqdm import tqdm
 
 select_thresh = 0.5 # selected threshold for the gaussian group
 
@@ -64,6 +49,74 @@ def gaussian_scaling_linf_attack(gaussian, alpha, epsilon, features_scaling):
         f_scaling_eta.mul_(-1)  # Targeted attack adjustment
         gaussian._scaling.add_(f_scaling_eta)
         gaussian._scaling.sub_(features_scaling).clamp_(-epsilon, epsilon).add_(features_scaling)
+
+def gaussian_position_l2_attack(gaussian, alpha, epsilon, features_xyz):
+    with torch.no_grad():
+        grad_xyz = gaussian._xyz.grad
+        norm_xyz = torch.norm(grad_xyz.view(-1), p=2)
+
+        if norm_xyz > 0:
+            f_xyz_eta = alpha * (grad_xyz / norm_xyz)
+        else:
+            f_xyz_eta = torch.zeros_like(grad_xyz)
+
+        f_xyz_eta.mul_(-1)
+        gaussian._xyz.add_(f_xyz_eta)
+
+        delta_xyz = gaussian._xyz - features_xyz
+        delta_xyz = delta_xyz.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._xyz.copy_(features_xyz + delta_xyz)
+
+def gaussian_rotation_l2_attack(gaussian, alpha, epsilon, features_rotation):
+    with torch.no_grad():
+        grad_rotation = gaussian._rotation.grad
+        norm_rotation = torch.norm(grad_rotation.view(-1), p=2)
+
+        if norm_rotation > 0:
+            f_rotation_eta = alpha * (grad_rotation / norm_rotation)
+        else:
+            f_rotation_eta = torch.zeros_like(grad_rotation)
+
+        f_rotation_eta.mul_(-1)
+        gaussian._rotation.add_(f_rotation_eta)
+
+        delta_rotation = gaussian._rotation - features_rotation
+        delta_rotation = delta_rotation.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._rotation.copy_(features_rotation + delta_rotation)
+
+def gaussian_opacity_l2_attack(gaussian, alpha, epsilon, features_opacity):
+    with torch.no_grad():
+        grad_opacity = gaussian._opacity.grad
+        norm_opacity = torch.norm(grad_opacity.view(-1), p=2)
+
+        if norm_opacity > 0:
+            f_opacity_eta = alpha * (grad_opacity / norm_opacity)
+        else:
+            f_opacity_eta = torch.zeros_like(grad_opacity)
+
+        f_opacity_eta.mul_(-1)
+        gaussian._opacity.add_(f_opacity_eta)
+
+        delta_opacity = gaussian._opacity - features_opacity
+        delta_opacity = delta_opacity.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._opacity.copy_(features_opacity + delta_opacity)
+
+def gaussian_scaling_l2_attack(gaussian, alpha, epsilon, features_scaling):
+    with torch.no_grad():
+        grad_scaling = gaussian._scaling.grad
+        norm_scaling = torch.norm(grad_scaling.view(-1), p=2)
+
+        if norm_scaling > 0:
+            f_scaling_eta = alpha * (grad_scaling / norm_scaling)
+        else:
+            f_scaling_eta = torch.zeros_like(grad_scaling)
+
+        f_scaling_eta.mul_(-1)
+        gaussian._scaling.add_(f_scaling_eta)
+
+        delta_scaling = gaussian._scaling - features_scaling
+        delta_scaling = delta_scaling.renorm(p=2, dim=0, maxnorm=epsilon)
+        gaussian._scaling.copy_(features_scaling + delta_scaling)
 
 def gaussian_color_linf_attack(gaussian, alpha, epsilon, features_rest, features_dc):
     with torch.no_grad():
@@ -206,28 +259,41 @@ def run(cfg : DictConfig) -> None:
     torch.cuda.set_device(DEVICE)
     # Additional attack setup
 
-    selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
-    target = torch.tensor(cfg.scene.target, device=cfg.data_device)
-    untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device) if cfg.scene.untarget is not None else None
     start_cam, end_cam, add_cams = cfg.start_cam, cfg.end_cam, cfg.add_cams
+    shuffle_cams = cfg.shuffle_cams
     shift_amount = cfg.shift_amount
     attack_conf_thresh = cfg.attack_conf_thresh
+    max_iters = cfg.max_iters
     batch_mode = cfg.batch_mode  # Set this to False for single camera mode
-
+    batch_size = cfg.batch_size # only used if batch_mode is True
+    is_targeted = cfg.scene.is_targeted
 
 
     # cleanup render and preds directories
     subprocess.run(["make", "clean"], shell=True)
         
-    # detectron2 
-    model, dt2_config = detectron2_model(device=cfg.device)
+    # load detector
+    detector = load_detector(cfg)
+    detector.load_model()
     
+    if isinstance(cfg.scene.target, str):
+        cfg.scene.target = [detector.resolve_label_index(cfg.scene.target)]
+        target = torch.tensor(cfg.scene.target, device=cfg.data_device)
+
+    selected_obj_ids = torch.tensor(cfg.selected_obj_ids, device=cfg.data_device)
+    if isinstance(cfg.scene.untarget, str):
+        cfg.scene.untarget = detector.resolve_label_index(cfg.scene.untarget)
+        untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device)
+    elif cfg.scene.untarget is not None:
+        untarget = torch.tensor(cfg.scene.untarget, device=cfg.data_device)
+    else:
+        untarget = None
     
     if dataset.no_groups == False and dataset.combine_splats == False:
         # Load Gaussian Splat model
         gaussians = GaussianModel(dataset.sh_degree)
         gaussians.training_setup(opt)
-        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=shuffle_cams) # very important to specify iteration to load! use -1 for highest iteration
         num_classes = dataset.num_classes
         print("Num classes: ",num_classes)     
 
@@ -262,7 +328,7 @@ def run(cfg : DictConfig) -> None:
         # Load Gaussian Splat model
         gaussians = GaussianModel(dataset.sh_degree)
         gaussians.training_setup(opt)
-        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=30000, shuffle=shuffle_cams) # very important to specify iteration to load! use -1 for highest iteration
         num_classes = dataset.num_classes
         print("Num classes: ",num_classes)
         # copy gaussians variable to new object
@@ -271,27 +337,12 @@ def run(cfg : DictConfig) -> None:
     elif dataset.combine_splats == True:
         gaussians = GaussianModel(dataset.sh_degree)
         gaussians.training_setup(opt)
-        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=False) # very important to specify iteration to load! use -1 for highest iteration
+        scene = Scene(args=dataset, gaussians=gaussians,load_iteration=-2, shuffle=shuffle_cams) # very important to specify iteration to load! use -1 for highest iteration
         # List of .ply file paths to be combined
-        ply_paths = cfg.scene.combine_splats_paths
+        ply_paths = [os.path.join(cfg.splat_asset_path,cfg.scene.target_splat), 
+                     os.path.join(cfg.splat_asset_path,cfg.scene.background_splat)]        
         if ply_paths is None or len(ply_paths) < 2:
-            raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")        
-        # ply_paths = [
-        #     "output/bike/point_cloud_302_5.ply",
-        #     "output/bike/point_cloud_109.ply",
-        # ]
-        # ply_paths = [
-        #     "output/room/truck.ply",
-        #     "output/room/plain_room.ply",
-        # ]    
-        # ply_paths = [
-        #     "output/nyc_block/nyc_maserati.ply",
-        #     "output/nyc_block/nyc_block_cycles_shadow.ply",
-        # ]      
-        # ply_paths = [
-        #     "output/nyc_block/single_obj_point_cloud_61.ply", # attacked car
-        #      "output/room/plain_room.ply",
-        # ]                 
+            raise ValueError("At least two .ply paths must be provided for combine_splats mode (target + background).")                     
 
         # Combine the .ply files
         gaussians.combine_splats(ply_paths)
@@ -347,7 +398,7 @@ def run(cfg : DictConfig) -> None:
     # viewpoint_stack = scene.getTrainCameras().copy()  # use all cameras
 
     # single camera or range of cameras
-    viewpoint_stack = scene.getTrainCameras().copy()[start_cam:end_cam] 
+    viewpoint_stack = scene.getTrainCameras().copy()#[start_cam:end_cam] 
     
 
     for i in range(1, add_cams):
@@ -362,8 +413,21 @@ def run(cfg : DictConfig) -> None:
         camera.yaw(7*i)
 
         viewpoint_stack.append(camera)
-
+    
+    # Ensure viewpoint_stack length is divisible by batch_size to avoid infinite loops
+    if batch_mode and batch_size > 0:
+        remainder = len(viewpoint_stack) % batch_size
+        if remainder != 0:
+            print(f"[Info] Truncating {remainder} camera(s) so that "
+                  f"len(viewpoint_stack) is divisible by batch_size={batch_size}.")
+            viewpoint_stack = viewpoint_stack[:-remainder]
+    
     total_views = len(viewpoint_stack)
+    import math
+    # Each batch is allowed its own `max_iters` budget.
+    num_batches = math.ceil(total_views / batch_size) if batch_mode and batch_size > 0 else 1
+    # Create a pending list of cameras for batching
+    pending_views = viewpoint_stack.copy()
 
     # get benign render bboxes - would be better if you could SOLO render the target!
     # for each benign render, get the bbox w/ detection of target class.
@@ -381,13 +445,10 @@ def run(cfg : DictConfig) -> None:
         pil_img_bw = pil_img.convert('L')
         bw_tresh = 20
         pil_img_bw = pil_img_bw.point(lambda p: p > bw_tresh and 255)
-        # pil_img_bw = PIL.ImageOps.invert(pil_img_bw)
-        bbox = pil_img_bw.getbbox()
-        
+        bbox = pil_img_bw.getbbox()        
         pil_img.save(img_path)
 
-        rendered_img_input = dt2_input(img_path)
-        # bbox = get_instances_bboxes(model, rendered_img_input, target = target.detach().cpu().numpy(), threshold=0.2)
+        rendered_img_input = detector.preprocess_input(img_path)
         bboxes.append(bbox)
 
         draw = PIL.ImageDraw.Draw(pil_img_bw)
@@ -397,32 +458,50 @@ def run(cfg : DictConfig) -> None:
         bbox = np.expand_dims(np.array(bbox), axis=0)
 
     gt_bboxes = np.array(bboxes)
+    pending_bboxes = gt_bboxes.copy()
 
-    for it in range(1500):
+    for it in range(max_iters * num_batches):
+        # Exit early if all viewpoints have been processed
+        if batch_mode and len(pending_views) == 0:
+            break
+        # If we've exhausted the per‑batch iteration budget without full success,
+        # drop the current batch and continue with the next one.
+        if batch_mode and (it + 1) % max_iters == 0:
+            print(f"[Info] Reached the per-batch limit of {max_iters} iterations without success. Moving to next batch.")
+            pending_views = pending_views[batch_size:]
+            pending_bboxes = pending_bboxes[batch_size:]
+            continue
         renders = []
         
         if batch_mode:
-            for cam in viewpoint_stack:
+            # Select current batch
+            current_batch = pending_views[:cfg.batch_size]
+            current_bboxes = pending_bboxes[:cfg.batch_size]
+            renders = []
+            for cam in current_batch:
                 render_pkg = render(cam, gaussians, pipe, bg)
                 renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-           
-            loss = model_input(model, renders, target=target, bboxes=gt_bboxes, batch_size=renders.shape[0])
+            loss = detector.infer(renders, target=target, bboxes=current_bboxes, batch_size=len(current_batch))
         else:
             cam = viewpoint_stack[0]
             render_pkg = render(cam, gaussians, pipe, bg)
             renders.append(render_pkg["render"])
             renders = torch.stack(renders)
-
-            loss = model_input(model, renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
+            loss = detector.infer(renders, target=target, bboxes=gt_bboxes[0], batch_size=renders.shape[0])
 
         print(f"Iteration: {it}, Loss: {loss}")
-        loss.backward(retain_graph=True)
+        loss.backward()
 
         if gaussians._features_rest.grad is not None and gaussians._features_dc.grad is not None:
             epsilon = cfg.epsilon
             alpha = cfg.alpha
             gaussian_color_l2_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
+            # gaussian_position_l2_attack(gaussians, alpha, epsilon, original_features_xyz)
+            # gaussian_scaling_l2_attack(gaussians, alpha, epsilon, original_features_scaling)
+            # gaussian_rotation_l2_attack(gaussians, alpha, epsilon, original_features_rotation)
+            # gaussian_opacity_l2_attack(gaussians, alpha, epsilon, original_features_opacity)
+            
             # Uncomment the following lines to apply different attacks
             # gaussian_color_linf_attack(gaussians, alpha, epsilon, original_features_rest, original_features_dc)
             # gaussian_position_linf_attack(gaussians, alpha, epsilon, original_features_xyz)
@@ -430,6 +509,7 @@ def run(cfg : DictConfig) -> None:
             # gaussian_rotation_linf_attack(gaussians, alpha, epsilon, original_features_rotation)
             # gaussian_opacity_linf_attack(gaussians, alpha, epsilon, original_features_opacity)
             # gaussian_scaling_linf_attack(gaussians, alpha, epsilon)
+
             combined_gaussians = copy.deepcopy(gaussians)
             combined_gaussians.concat_setup("features_rest", gaussians_original._features_rest, True)
             combined_gaussians.concat_setup("features_dc", gaussians_original._features_dc, True)
@@ -441,7 +521,7 @@ def run(cfg : DictConfig) -> None:
 
             concat_renders = []
             if batch_mode:
-                for cam in viewpoint_stack:
+                for cam in current_batch:
                     render_pkg = render(cam, combined_gaussians, pipe, bg)
                     concat_renders.append(render_pkg["render"])
             else:
@@ -451,7 +531,7 @@ def run(cfg : DictConfig) -> None:
 
             if batch_mode:
                 successes = []
-                for j, cam in enumerate(viewpoint_stack):
+                for j, cam in enumerate(current_batch):
                     img_path = f"renders/render_concat_{j}.png"
                     cr = concat_renders[j]
                     preds_path = "preds"
@@ -462,23 +542,31 @@ def run(cfg : DictConfig) -> None:
                                     .cpu()
                                     .numpy()).save(img_path)
 
-                    rendered_img_input = dt2_input(img_path)
-                    success = save_adv_image_preds(
-                        model, dt2_config, input=rendered_img_input,
-                        instance_mask_thresh=attack_conf_thresh,
-                        target=target, untarget=untarget, is_targeted=True,
-                        path=os.path.join(preds_path, f'render_it{it}_c{j}.png')
+                    rendered_img_input = detector.preprocess_input(img_path)
+                    success = detector.predict_and_save(
+                        image=cr,
+                        path=os.path.join(preds_path, f'render_it{it}_c{j}.png'),
+                        target=target,
+                        untarget=untarget,
+                        is_targeted=is_targeted,
+                        threshold=attack_conf_thresh,
+                        gt_bbox=current_bboxes[j]
                     )
                     successes.append(success)
                 num_successes = sum(successes)
-                print(f"Successes: {num_successes}/{len(viewpoint_stack)}")
-                if num_successes == len(viewpoint_stack):
-                    print ("All camera viewpoints attacked successfully")
-                    break
-                #FIXME - add as param
-                if num_successes >= 1:
-                    print("saving gaussians")
-                    combined_gaussians.save_ply(os.path.join("output/industrial_park", f"point_cloud_{it}.ply"))
+                print(f"Successes: {num_successes}/{len(current_batch)}")
+                if num_successes == len(current_batch)-1 or num_successes == len(current_batch):
+                    print("Current batch attacked successfully")
+                    # Remove the successful batch from pending lists
+                    pending_views = pending_views[len(current_batch):]
+                    pending_bboxes = pending_bboxes[len(current_batch):]
+                    # If no more cameras remain, finish the attack
+                    if len(pending_views) == 0:
+                        print("All camera viewpoints attacked successfully")
+                        save_path = os.path.join("output", f"{cfg.scene.name}_adv_{cfg.scene.detector_name}.ply")
+                        print(f"saving gaussians to {save_path}")
+                        gaussians.save_ply(save_path)
+                        break
             else:
                 img_path = f"renders/render_concat_0.png"
                 cr = concat_renders[0]
@@ -490,29 +578,30 @@ def run(cfg : DictConfig) -> None:
                                 .cpu()
                                 .numpy()).save(img_path)
 
-                rendered_img_input = dt2_input(img_path)
-                success = save_adv_image_preds(
-                    model, dt2_config, input=rendered_img_input,
-                    instance_mask_thresh=attack_conf_thresh,
-                    target=target, untarget=untarget, is_targeted=True,
-                    path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png')
-                )
+                rendered_img_input = detector.preprocess_input(img_path)
+                success = detector.predict_and_save(
+                        image=cr,
+                        path=os.path.join(preds_path, f'render_it{it}_c{total_views-len(viewpoint_stack)}.png'),
+                        target=target,
+                        untarget=untarget,
+                        is_targeted=is_targeted,
+                        threshold=attack_conf_thresh,
+                        gt_bbox = gt_bboxes[0]
+                    )
                 if not batch_mode and success:
                     viewpoint_stack.pop(0)
                     gt_bboxes = np.delete(gt_bboxes, 0, axis=0)
-                    # print('saving gaussians')
-                    # combined_gaussians.save_ply(os.path.join("output/nyc_block", f"combined_point_cloud_{it}.ply"))                        
-                    # gaussians.save_ply(os.path.join("output/nyc_block", f"single_obj_point_cloud_{it}.ply"))
                     if len(viewpoint_stack) == 0:
+                        save_path = os.path.join("output", f"{cfg.scene.name}_adv_{cfg.scene.detector_name}.ply")
+                        print(f"saving gaussians to {save_path}")
+                        gaussians.save_ply(save_path)
                         print ("All camera viewpoints attacked successfully")
-                        # print("saving gaussians")
-                        # FIXME - hardcoded directory
-                        # combined_gaussians.save_ply(os.path.join("output/bike", f"point_cloud_{it}.ply"))                        
                         break
                 print(f"Success: {success}")
+        
         del combined_gaussians
         gaussians.optimizer.zero_grad(set_to_none=True)
-        model.zero_grad()
+        detector.zero_grad()
 
 if __name__ == "__main__":
     run()

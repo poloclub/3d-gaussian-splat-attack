@@ -1,0 +1,10 @@
+name: blue_suv_grass
+source_path: ./assets/${cam_path} 
+model_path: ./assets/${cam_path}
+target_splat : "adv_blue_suv_grass.ply"
+background_splat : "nyc_block_cycles_shadow.ply"
+cam_indices: [0]
+is_targeted: True
+target: 'potted_plant'
+untarget: 'car'
+detector_name: yolov8

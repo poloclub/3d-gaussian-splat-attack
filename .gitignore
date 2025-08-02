@@ -26,6 +26,11 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+assets/*/*/*.png
+*.DS_Store
+results/*
+multirun/*
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -167,3 +172,24 @@ preds/*
 detectron2/*
 
 settings.json
+depth_anything.ipynb
+
+# Ignore build/log artifacts inside yolov3-legacy
+detectors/yolov3-legacy/__pycache__/
+detectors/yolov3-legacy/*.pyc
+detectors/yolov3-legacy/*.pyo
+detectors/yolov3-legacy/*.log
+detectors/yolov3-legacy/runs/
+detectors/yolov3-legacy/inference/output/
+
+# If you accidentally modified or downloaded pretrained models inside
+detectors/yolov3-legacy/weights/
+detectors/yolov3-legacy/*.weights
+*.weights
+*.pth
+*.pt
+points3D.txt
+yolov3.cfg
+yolov8n.yaml
+gt.json
+preds.json

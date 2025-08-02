@@ -2,6 +2,8 @@ defaults:
   - scene: maserati
   - _self_
 
+cam_path: "nyc_block"
+splat_asset_path: "output"
 data_device: "cuda"
 device: "7"
 eval: false
@@ -14,8 +16,9 @@ resolution: 1
 sh_degree: 3
 train_split: false
 white_background: false
-no_groups: false
+no_groups: true
 combine_splats: true
+write_images: false
 
 # Optimization parameters
 densification_interval: 100
@@ -44,12 +47,15 @@ scaling_lr: 0.005
 epsilon: 5.0
 alpha: 0.5
 selected_obj_ids: [117]     # example list
+shuffle_cams: false
 start_cam: 0
 end_cam: 1
 add_cams: 1
 shift_amount: 0.15
-attack_conf_thresh: 0.7
+attack_conf_thresh: 0.25
 batch_mode: false
+batch_size: 5
+max_iters: 100
 
 # Additional debug flags
 compute_cov3D_python: false
@@ -58,8 +64,13 @@ debug: false
 
 sysconfig:
   output_path: results/${scene.name}
-  log_dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  #log_dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  log_dir: ./results/${scene.name}/${now:%Y-%m-%d}/${cam_path}_${scene.target_splat}_${scene.detector_name}_${now:%H-%M}
 
 hydra:
   run:
-    dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+    # dir: ./results/${scene.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+    dir: ./results/${scene.name}/${now:%Y-%m-%d}/${cam_path}_${scene.target_splat}_${scene.detector_name}_${now:%H-%M}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${cam_path}_${scene.target_splat}_${scene.detector_name}
