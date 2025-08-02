@@ -16,7 +16,7 @@ from detectron2.structures import Instances
 from detectron2.data.detection_utils import *
 from detectron2.modeling import build_model
 from detectron2.utils.events import EventStorage
-from detectron2.structures.boxes import pairwise_iou
+from torchvision.ops import box_iou
 
 
 class Detectron2Detector(BaseDetector):
@@ -141,21 +141,23 @@ class Detectron2Detector(BaseDetector):
             best_class = None
             best_iou = None
             formatted_gt_bbox = None
-            best_idx = None            
+            best_idx = None
             if gt_bbox is not None:
                 # FIXME: makeoption to draw gt bbox
                 # v.draw_box(gt_bbox, edge_color='green')
 
                 gt_box_tensor = ch.tensor([gt_bbox], dtype=ch.float32)
+                # compute IoU between each predicted box and the single GT box
                 pred_boxes = instances.pred_boxes
-                gt_box_struct = Boxes(gt_box_tensor).to(pred_boxes.device)
-
                 if len(pred_boxes) > 0:
-                    ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze(1)
+                    pred_t = instances.pred_boxes.tensor  # [N,4]
+                    gt_t = gt_box_tensor.to(pred_t.device)  # [1,4]
+                    ious_mat = box_iou(pred_t, gt_t)        # [N,1]
+                    ious = ious_mat[:, 0]                  # [N]
                     best_idx = ious.argmax().item()
-                    best_iou = ious[best_idx].item()
-                    best_class = instances.pred_classes[best_idx].item() if best_iou > 0.5 else None
-                    closest_confidence = instances.scores[best_idx].item() if best_iou > 0.5 else None
+                    best_iou = float(ious[best_idx].item())
+                    best_class = int(instances.pred_classes[best_idx].item()) if best_iou > 0.5 else None
+                    closest_confidence = float(instances.scores[best_idx].item()) if best_iou > 0.5 else None
                     target_pred_exists = (best_iou > 0.5 and best_class == target)
                 else:
                     target_pred_exists = False
@@ -167,15 +169,16 @@ class Detectron2Detector(BaseDetector):
                 x1, y1, x2, y2 = [float(coord) for coord in gt_box_tensor[0]]
                 w = x2 - x1
                 h = y2 - y1
-                formatted_gt_bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]                      
-                pred_boxes = instances.pred_boxes
-                gt_box_struct = Boxes(gt_box_tensor).to(pred_boxes.device)
- 
-                if len(pred_boxes) > 0:
-                    ious = pairwise_iou(pred_boxes, gt_box_struct).squeeze(1)
+                formatted_gt_bbox = [round(x1, 1), round(y1, 1), round(w, 1), round(h, 1)]
+                # compute IoU again for untarget check
+                pred_t = instances.pred_boxes.tensor  # [N,4]
+                gt_t   = gt_box_tensor.to(pred_t.device)  # [1,4]
+                if pred_t.numel() > 0:
+                    ious_mat = box_iou(pred_t, gt_t)   # [N,1]
+                    ious = ious_mat[:, 0]
                     best_idx = ious.argmax().item()
-                    best_iou = ious[best_idx].item()
-                    best_class = instances.pred_classes[best_idx].item() if best_iou > 0.5 else None
+                    best_iou = float(ious[best_idx].item())
+                    best_class = int(instances.pred_classes[best_idx].item()) if best_iou > 0.5 else None
                     untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
                 else:
                     untarget_pred_not_exists = True
