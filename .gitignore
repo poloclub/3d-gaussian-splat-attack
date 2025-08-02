@@ -191,3 +191,5 @@ detectors/yolov3-legacy/*.weights
 points3D.txt
 yolov3.cfg
 yolov8n.yaml
+gt.json
+preds.json
