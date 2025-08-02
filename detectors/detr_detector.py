@@ -220,6 +220,7 @@ class DetrDetector(BaseDetector):
         best_iou = None
         formatted_gt_bbox = [round(gt_bbox[0],1), round(gt_bbox[1],1),
                                 round(gt_bbox[2]-gt_bbox[0],1), round(gt_bbox[3]-gt_bbox[1],1)]
+        best_bbox = None
         if gt_bbox is not None and pred_boxes:
             gt = ch.tensor(gt_bbox, dtype=ch.float32)
             dets = ch.tensor(pred_boxes, dtype=ch.float32)
@@ -231,6 +232,7 @@ class DetrDetector(BaseDetector):
             best_iou = float(ious[best_idx].item())
             best_class = pred_classes[best_idx] if best_iou > 0.5 else None
             closest_confidence = pred_confs[best_idx] if best_iou > 0.5 else None
+            best_bbox = pred_boxes[best_idx] if best_iou > 0.5 else None
             target_pred_exists = (best_iou > 0.5 and best_class == target)
             untarget_pred_not_exists = not (best_iou > 0.5 and best_class == untarget)
         else:
@@ -255,6 +257,12 @@ class DetrDetector(BaseDetector):
                 "closest_class_name": self.resolve_label_index(best_class) if best_class is not None else None,
                 "closest_category_id": self.yolov3_resolve_label_index(self.resolve_label_index(best_class)) if best_class is not None else None, # get 80 class index mapping from YOLO, since DETR mapped to 90
                 "closest_confidence": closest_confidence if gt_bbox is not None else None,
+                "closest_bbox": [
+                    round(best_bbox[0], 1),
+                    round(best_bbox[1], 1),
+                    round(best_bbox[2] - best_bbox[0], 1),
+                    round(best_bbox[3] - best_bbox[1], 1),
+                ] if best_bbox is not None else None,
                 "best_iou": best_iou if gt_bbox is not None else None,
                 "gt_bbox": [float(x) for x in formatted_gt_bbox] if gt_bbox is not None else None,
                 "target_pred_exists": target_pred_exists,
